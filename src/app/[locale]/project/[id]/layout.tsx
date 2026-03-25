@@ -2,7 +2,7 @@
 
 import { useEffect, use } from "react";
 import { useProjectStore } from "@/stores/project-store";
-import { ProjectNav } from "@/components/editor/project-nav";
+
 import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { useLocale } from "next-intl";
@@ -69,13 +69,8 @@ export default function ProjectLayout({
         </div>
       </header>
 
-      {/* Sidebar + content */}
-      <div className="flex flex-1 overflow-hidden">
-        <ProjectNav projectId={id} />
-        <main className="flex-1 overflow-y-auto bg-[--surface] p-6 pb-24 lg:pb-6">
-          {children}
-        </main>
-      </div>
+      {/* Content */}
+      {children}
     </div>
   );
 }

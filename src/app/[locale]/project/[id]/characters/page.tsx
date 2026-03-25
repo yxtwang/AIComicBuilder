@@ -1,173 +1,221 @@
 "use client";
 
-import { useState } from "react";
-import { useProjectStore } from "@/stores/project-store";
-import { useModelStore } from "@/stores/model-store";
-import { CharacterCard } from "@/components/editor/character-card";
-import { Button } from "@/components/ui/button";
-import { useTranslations } from "next-intl";
-import { Users, Sparkles, ImageIcon, Loader2 } from "lucide-react";
-import { InlineModelPicker } from "@/components/editor/model-selector";
+import { useEffect, useState, useMemo, useCallback, use } from "react";
+import { useTranslations, useLocale } from "next-intl";
+import { Users, ArrowLeft, Loader2, Trash2 } from "lucide-react";
 import { apiFetch } from "@/lib/api-fetch";
-import { useModelGuard } from "@/hooks/use-model-guard";
+import { CharacterCard } from "@/components/editor/character-card";
+import Link from "next/link";
 import { toast } from "sonner";
 
-export default function CharactersPage() {
+interface Character {
+  id: string;
+  projectId: string;
+  name: string;
+  description: string;
+  visualHint: string | null;
+  referenceImage: string | null;
+  scope: string;
+  episodeId: string | null;
+}
+
+interface Episode {
+  id: string;
+  title: string;
+  sequence: number;
+}
+
+export default function CharactersPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id: projectId } = use(params);
+  const locale = useLocale();
   const t = useTranslations();
-  const { project, fetchProject } = useProjectStore();
-  const getModelConfig = useModelStore((s) => s.getModelConfig);
-  const [extracting, setExtracting] = useState(false);
-  const [generatingImages, setGeneratingImages] = useState(false);
-  const textGuard = useModelGuard("text");
-  const imageGuard = useModelGuard("image");
+  const tc = useTranslations("common");
+  const tChar = useTranslations("character");
 
-  if (!project) return null;
+  const [characters, setCharacters] = useState<Character[]>([]);
+  const [episodes, setEpisodes] = useState<Episode[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const hasCharactersWithoutImages = project.characters.some(
-    (c) => !c.referenceImage
+  const fetchData = useCallback(async () => {
+    const [chars, eps] = await Promise.all([
+      apiFetch(`/api/projects/${projectId}/characters`).then((r) => r.json()),
+      apiFetch(`/api/projects/${projectId}/episodes`).then((r) => r.json()),
+    ]);
+    setCharacters(chars);
+    setEpisodes(eps);
+    setLoading(false);
+  }, [projectId]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  const mainCharacters = useMemo(
+    () => characters.filter((c) => c.scope === "main"),
+    [characters]
   );
 
-  async function handleExtractCharacters() {
-    if (!project) return;
-    if (!textGuard()) return;
-    setExtracting(true);
-
-    try {
-      const response = await apiFetch(`/api/projects/${project.id}/generate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "character_extract",
-          modelConfig: getModelConfig(),
-        }),
-      });
-
-      if (response.body) {
-        const reader = response.body.getReader();
-        while (true) {
-          const { done } = await reader.read();
-          if (done) break;
-        }
+  const guestByEpisode = useMemo(() => {
+    const map = new Map<string, Character[]>();
+    for (const c of characters) {
+      if (c.scope === "guest" && c.episodeId) {
+        const list = map.get(c.episodeId) || [];
+        list.push(c);
+        map.set(c.episodeId, list);
       }
-    } catch (err) {
-      console.error("Character extract error:", err);
-      toast.error(t("common.generationFailed"));
     }
+    return map;
+  }, [characters]);
 
-    setExtracting(false);
-    fetchProject(project.id);
+  const episodeNameMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const ep of episodes) {
+      map.set(ep.id, ep.title);
+    }
+    return map;
+  }, [episodes]);
+
+  const guestCount = useMemo(
+    () => characters.filter((c) => c.scope === "guest").length,
+    [characters]
+  );
+
+  async function handlePromote(characterId: string) {
+    await apiFetch(`/api/projects/${projectId}/characters/${characterId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scope: "main" }),
+    });
+    fetchData();
   }
 
-  async function handleBatchGenerateImages() {
-    if (!project) return;
-    if (!imageGuard()) return;
-    setGeneratingImages(true);
+  async function handleDelete(characterId: string, name: string) {
+    if (!confirm(tChar("deleteConfirm", { name }))) return;
+    await apiFetch(`/api/projects/${projectId}/characters/${characterId}`, {
+      method: "DELETE",
+    });
+    toast.success(tc("delete"));
+    fetchData();
+  }
 
-    try {
-      const response = await apiFetch(`/api/projects/${project.id}/generate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "batch_character_image",
-          modelConfig: getModelConfig(),
-        }),
-      });
-
-      const data = await response.json() as { results: Array<{ status: string }> };
-      if (data.results?.some((r) => r.status === "error")) {
-        toast.warning(t("common.batchPartialFailed"));
-      }
-    } catch (err) {
-      console.error("Batch character image error:", err);
-      toast.error(t("common.generationFailed"));
-    }
-
-    setGeneratingImages(false);
-    fetchProject(project.id);
+  if (loading) {
+    return (
+      <div className="flex min-h-[400px] items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="h-6 w-6 animate-spin text-primary" />
+          <p className="text-sm text-[--text-muted]">{tc("loading")}</p>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className="animate-page-in space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="flex-1 overflow-y-auto bg-[--surface] p-6 pb-24 lg:pb-6">
+      {/* Header */}
+      <div className="mb-6 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10">
-            <Users className="h-4 w-4 text-primary" />
-          </div>
+          <Link
+            href={`/${locale}/project/${projectId}/episodes`}
+            className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/8 transition-colors hover:bg-primary/15"
+          >
+            <ArrowLeft className="h-5 w-5 text-primary" />
+          </Link>
           <div>
             <h2 className="font-display text-xl font-bold tracking-tight text-[--text-primary]">
-              {t("project.characters")}
+              {tChar("management")}
             </h2>
             <p className="text-xs text-[--text-muted]">
-              {project.characters.length} characters
+              {characters.length} {t("episode.count")}
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <InlineModelPicker capability="text" />
-          <Button
-            onClick={handleExtractCharacters}
-            disabled={extracting}
-            variant="outline"
-            size="sm"
-          >
-            {extracting ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Sparkles className="h-3.5 w-3.5" />
-            )}
-            {extracting ? t("common.generating") : t("project.extractCharacters")}
-          </Button>
-          {project.characters.length > 0 && hasCharactersWithoutImages && (
-            <>
-              <InlineModelPicker capability="image" />
-              <Button
-                onClick={handleBatchGenerateImages}
-                disabled={generatingImages}
-                size="sm"
-              >
-                {generatingImages ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <ImageIcon className="h-3.5 w-3.5" />
-                )}
-                {generatingImages
-                  ? t("common.generating")
-                  : t("character.batchGenerateImages")}
-              </Button>
-            </>
-          )}
-        </div>
       </div>
 
-      {project.characters.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-[--border-subtle] bg-[--surface]/50 py-24">
-          <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/15 to-accent/10">
-            <Users className="h-7 w-7 text-primary" />
-          </div>
+      {/* Main Characters Section */}
+      <section className="mb-8">
+        <div className="mb-4 flex items-center gap-2">
           <h3 className="font-display text-lg font-semibold text-[--text-primary]">
-            {t("project.characters")}
+            {tChar("mainSection")}
           </h3>
-          <p className="mt-2 max-w-sm text-center text-sm text-[--text-secondary]">
-            {t("character.noCharacters")}
-          </p>
+          <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-blue-100 px-1.5 text-[11px] font-semibold text-blue-700">
+            {mainCharacters.length}
+          </span>
         </div>
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {project.characters.map((char) => (
-            <CharacterCard
-              key={char.id}
-              id={char.id}
-              projectId={project.id}
-              name={char.name}
-              description={char.description}
-              visualHint={char.visualHint ?? null}
-              referenceImage={char.referenceImage}
-              onUpdate={() => fetchProject(project.id)}
-              batchGenerating={generatingImages}
-            />
-          ))}
+        {mainCharacters.length === 0 ? (
+          <div className="flex min-h-[120px] items-center justify-center rounded-2xl border border-dashed border-[--border-subtle] bg-white/50 p-6">
+            <p className="text-sm text-[--text-muted]">{tChar("noMain")}</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-4 xl:grid-cols-4">
+            {mainCharacters.map((char) => (
+              <CharacterCard
+                key={char.id}
+                id={char.id}
+                projectId={projectId}
+                name={char.name}
+                description={char.description}
+                visualHint={char.visualHint}
+                referenceImage={char.referenceImage}
+                scope={char.scope}
+                onUpdate={fetchData}
+                onDelete={() => handleDelete(char.id, char.name)}
+              />
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* Guest Characters Section */}
+      <section>
+        <div className="mb-4 flex items-center gap-2">
+          <h3 className="font-display text-lg font-semibold text-[--text-primary]">
+            {tChar("guestSection")}
+          </h3>
+          <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-purple-100 px-1.5 text-[11px] font-semibold text-purple-700">
+            {guestCount}
+          </span>
         </div>
-      )}
+        {guestCount === 0 ? (
+          <div className="flex min-h-[120px] items-center justify-center rounded-2xl border border-dashed border-[--border-subtle] bg-white/50 p-6">
+            <p className="text-sm text-[--text-muted]">{tChar("noGuest")}</p>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {episodes
+              .filter((ep) => guestByEpisode.has(ep.id))
+              .map((ep) => (
+                <div key={ep.id}>
+                  <h4 className="mb-3 text-sm font-medium text-[--text-secondary]">
+                    EP.{String(ep.sequence).padStart(2, "0")} —{" "}
+                    {episodeNameMap.get(ep.id)}
+                  </h4>
+                  <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-4 xl:grid-cols-4">
+                    {guestByEpisode.get(ep.id)!.map((char) => (
+                      <CharacterCard
+                        key={char.id}
+                        id={char.id}
+                        projectId={projectId}
+                        name={char.name}
+                        description={char.description}
+                        visualHint={char.visualHint}
+                        referenceImage={char.referenceImage}
+                        scope={char.scope}
+                        episodeName={`EP.${String(ep.sequence).padStart(2, "0")} ${ep.title}`}
+                        onUpdate={fetchData}
+                        onPromote={() => handlePromote(char.id)}
+                        onDelete={() => handleDelete(char.id, char.name)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ))}
+          </div>
+        )}
+      </section>
     </div>
   );
 }

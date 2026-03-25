@@ -68,7 +68,7 @@ export function ProjectCard({ id, title, status, createdAt }: ProjectCardProps) 
 
   return (
     <>
-      <Link href={`/${locale}/project/${id}/script`} className="group block">
+      <Link href={`/${locale}/project/${id}/episodes`} className="group block">
         <div className="relative flex flex-col rounded-xl border border-[--border-subtle] bg-white p-4 transition-all duration-200 hover:border-[--border-hover] hover:shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
           {/* Delete button — top right */}
           <button

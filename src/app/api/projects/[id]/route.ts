@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { projects, characters, shots, dialogues, storyboardVersions } from "@/lib/db/schema";
+import { projects, episodes, characters, shots, dialogues, storyboardVersions } from "@/lib/db/schema";
 import { eq, asc, and, desc } from "drizzle-orm";
 import { getUserIdFromRequest } from "@/lib/get-user-id";
 
@@ -70,8 +70,16 @@ export async function GET(
     })
   );
 
+  // Fetch episodes for this project
+  const projectEpisodes = await db
+    .select()
+    .from(episodes)
+    .where(eq(episodes.projectId, id))
+    .orderBy(asc(episodes.sequence));
+
   return NextResponse.json({
     ...project,
+    episodes: projectEpisodes,
     characters: projectCharacters,
     shots: enrichedShots,
     versions: allVersions.map((v) => ({

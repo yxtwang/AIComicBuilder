@@ -21,6 +21,34 @@ export const projects = sqliteTable("projects", {
     .$defaultFn(() => new Date()),
 });
 
+export const episodes = sqliteTable("episodes", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id")
+    .notNull()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  sequence: integer("sequence").notNull(),
+  idea: text("idea").default(""),
+  script: text("script").default(""),
+  status: text("status", {
+    enum: ["draft", "processing", "completed"],
+  })
+    .notNull()
+    .default("draft"),
+  generationMode: text("generation_mode", { enum: ["keyframe", "reference"] })
+    .notNull()
+    .default("keyframe"),
+  description: text("description").default(""),
+  keywords: text("keywords").default(""),
+  finalVideoUrl: text("final_video_url"),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
 export const characters = sqliteTable("characters", {
   id: text("id").primaryKey(),
   projectId: text("project_id")
@@ -30,6 +58,20 @@ export const characters = sqliteTable("characters", {
   description: text("description").default(""),
   visualHint: text("visual_hint").default(""),
   referenceImage: text("reference_image"),
+  scope: text("scope", { enum: ["main", "guest"] }).notNull().default("main"),
+  episodeId: text("episode_id").references(() => episodes.id, {
+    onDelete: "cascade",
+  }),
+});
+
+export const episodeCharacters = sqliteTable("episode_characters", {
+  id: text("id").primaryKey(),
+  episodeId: text("episode_id")
+    .notNull()
+    .references(() => episodes.id, { onDelete: "cascade" }),
+  characterId: text("character_id")
+    .notNull()
+    .references(() => characters.id, { onDelete: "cascade" }),
 });
 
 export const storyboardVersions = sqliteTable("storyboard_versions", {
@@ -42,6 +84,9 @@ export const storyboardVersions = sqliteTable("storyboard_versions", {
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .$defaultFn(() => new Date()),
+  episodeId: text("episode_id").references(() => episodes.id, {
+    onDelete: "cascade",
+  }),
 });
 
 export const shots = sqliteTable("shots", {
@@ -64,6 +109,9 @@ export const shots = sqliteTable("shots", {
   sceneRefFrame: text("scene_ref_frame"),
   videoScript: text("video_script"),
   videoPrompt: text("video_prompt"),
+  episodeId: text("episode_id").references(() => episodes.id, {
+    onDelete: "cascade",
+  }),
   versionId: text("version_id").references(() => storyboardVersions.id, {
     onDelete: "cascade",
   }),
@@ -85,6 +133,22 @@ export const dialogues = sqliteTable("dialogues", {
   text: text("text").notNull(),
   audioUrl: text("audio_url"),
   sequence: integer("sequence").notNull().default(0),
+});
+
+export const importLogs = sqliteTable("import_logs", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id")
+    .notNull()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  step: integer("step").notNull(),
+  status: text("status", { enum: ["running", "done", "error"] })
+    .notNull()
+    .default("running"),
+  message: text("message").notNull().default(""),
+  metadata: text("metadata", { mode: "json" }),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
 });
 
 export const tasks = sqliteTable("tasks", {
@@ -117,4 +181,7 @@ export const tasks = sqliteTable("tasks", {
     .notNull()
     .$defaultFn(() => new Date()),
   scheduledAt: integer("scheduled_at", { mode: "timestamp" }),
+  episodeId: text("episode_id").references(() => episodes.id, {
+    onDelete: "cascade",
+  }),
 });

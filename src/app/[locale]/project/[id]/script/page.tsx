@@ -1,5 +1,10 @@
-import { ScriptEditor } from "@/components/editor/script-editor";
+import { redirect } from "next/navigation";
 
-export default function ScriptPage() {
-  return <ScriptEditor />;
+export default async function LegacyPage({
+  params,
+}: {
+  params: Promise<{ locale: string; id: string }>;
+}) {
+  const { locale, id } = await params;
+  redirect(`/${locale}/project/${id}/episodes`);
 }

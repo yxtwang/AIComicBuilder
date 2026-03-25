@@ -25,8 +25,15 @@ export function buildFirstFramePrompt(params: {
   lines.push(`=== CHARACTER DESCRIPTIONS ===`);
   lines.push(params.characterDescriptions);
   lines.push(``);
-  lines.push(`=== REFERENCE IMAGES ===`);
-  lines.push(`Reference images of each character are attached. You MUST reproduce these characters EXACTLY as they appear in the reference images — same face, same body type, same clothing, same hair, same colors, same art style. Do NOT change their visual style.`);
+  lines.push(`=== REFERENCE IMAGES (CHARACTER SHEETS) ===`);
+  lines.push(`Each attached reference image is a CHARACTER SHEET showing 4 views (front, three-quarter, side, back).`);
+  lines.push(`The character's NAME is printed at the bottom of each sheet — use it to identify which character it represents.`);
+  lines.push(`MANDATORY CONSISTENCY RULES:`);
+  lines.push(`- Match the character name in the sheet to the character name in the scene description`);
+  lines.push(`- CLOTHING MUST BE IDENTICAL to the reference — same garment type, color, material, accessories. Do NOT substitute (e.g. do NOT replace 青色常服 with 龙袍)`);
+  lines.push(`- Face, hairstyle, hair color, body type, skin tone must match EXACTLY`);
+  lines.push(`- All accessories (帽子, 佩刀, 发簪, jewelry) shown in the reference MUST appear`);
+  lines.push(`- Art style must match the reference images exactly`);
   lines.push(``);
 
   if (params.previousLastFrame) {
@@ -75,14 +82,16 @@ export function buildLastFramePrompt(params: {
   lines.push(params.characterDescriptions);
   lines.push(``);
   lines.push(`=== REFERENCE IMAGES ===`);
-  lines.push(`The FIRST attached image is the OPENING FRAME of this same shot — use it as your visual anchor for style, environment, and character appearance.`);
-  lines.push(`The remaining attached images are character reference sheets — characters MUST look exactly like their references.`);
+  lines.push(`The FIRST attached image is the OPENING FRAME of this same shot — use it as your visual anchor.`);
+  lines.push(`The remaining attached images are CHARACTER SHEETS (4 views each, name printed at bottom).`);
+  lines.push(`Match each character sheet's name to the characters in the scene.`);
   lines.push(``);
   lines.push(`=== RELATIONSHIP TO FIRST FRAME ===`);
   lines.push(`This closing frame shows the END STATE of the shot's action. Compared to the first frame:`);
   lines.push(`- Same environment, lighting setup, and color palette`);
   lines.push(`- Same art style — absolutely no style changes`);
-  lines.push(`- Identical character appearance (face, outfit, body type)`);
+  lines.push(`- IDENTICAL clothing — characters wear the EXACT same outfit as in their reference sheets and the first frame. No costume changes.`);
+  lines.push(`- Same face, hairstyle, accessories — only pose/expression/position change`);
   lines.push(`- Character positions, poses, and expressions have CHANGED as described in the frame description above`);
   lines.push(``);
   lines.push(`=== AS NEXT SHOT'S STARTING POINT ===`);

@@ -6,11 +6,17 @@ import {
   CHARACTER_EXTRACT_SYSTEM,
   buildCharacterExtractPrompt,
 } from "@/lib/ai/prompts/character-extract";
+import { and, eq } from "drizzle-orm";
 import { ulid } from "ulid";
 import type { Task } from "@/lib/task-queue";
 
 export async function handleCharacterExtract(task: Task) {
-  const payload = task.payload as { projectId: string; screenplay: string; modelConfig?: ModelConfigPayload };
+  const payload = task.payload as {
+    projectId: string;
+    screenplay: string;
+    modelConfig?: ModelConfigPayload;
+    episodeId?: string;
+  };
 
   const ai = resolveAIProvider(payload.modelConfig);
   const result = await ai.generateText(
@@ -24,8 +30,35 @@ export async function handleCharacterExtract(task: Task) {
     visualHint?: string;
   }>;
 
+  let newCharacters = extracted;
+
+  // AI deduplication when extracting for an episode with existing main chars
+  if (payload.episodeId) {
+    const existingChars = await db
+      .select()
+      .from(characters)
+      .where(
+        and(eq(characters.projectId, payload.projectId), eq(characters.scope, "main"))
+      );
+
+    if (existingChars.length > 0) {
+      try {
+        const existingNames = existingChars.map((c) => c.name);
+        const dedupeResult = await ai.generateText(
+          `Existing characters: ${JSON.stringify(existingNames)}\n\nNewly extracted characters: ${JSON.stringify(extracted.map(c => c.name))}\n\nReturn a JSON array of ONLY the truly new character names that are NOT variants or aliases of existing characters. Consider nicknames, shortened names, and honorific variations as the same character.`,
+          { systemPrompt: "You are a character deduplication assistant. Return only a JSON array of strings.", temperature: 0 }
+        );
+        const newNames = new Set(JSON.parse(dedupeResult) as string[]);
+        newCharacters = extracted.filter((c) => newNames.has(c.name));
+      } catch (dedupeErr) {
+        console.warn("[CharacterExtract] Deduplication failed, inserting all:", dedupeErr);
+      }
+    }
+  }
+
+  const scope = payload.episodeId ? "guest" : "main";
   const created = [];
-  for (const char of extracted) {
+  for (const char of newCharacters) {
     const id = ulid();
     const [record] = await db
       .insert(characters)
@@ -35,6 +68,8 @@ export async function handleCharacterExtract(task: Task) {
         name: char.name,
         description: char.description,
         visualHint: char.visualHint ?? "",
+        scope,
+        episodeId: payload.episodeId ?? null,
       })
       .returning();
     created.push(record);

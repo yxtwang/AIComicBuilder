@@ -12,6 +12,8 @@ export interface ImageOptions {
   aspectRatio?: string;
   quality?: string;
   referenceImages?: string[];
+  /** Labels for reference images, e.g. character names. Must match referenceImages order. */
+  referenceLabels?: string[];
 }
 
 export interface AIProvider {

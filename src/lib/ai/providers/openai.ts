@@ -62,7 +62,6 @@ export class OpenAIProvider implements AIProvider {
     if (!isDallE) {
       if (options?.size) compatParams.size = options.size;
       if (options?.aspectRatio) compatParams.aspect_ratio = options.aspectRatio;
-      // Fall back to 16:9 if neither is specified
       if (!options?.size && !options?.aspectRatio) compatParams.aspect_ratio = "16:9";
     }
 

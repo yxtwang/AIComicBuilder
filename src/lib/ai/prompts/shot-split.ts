@@ -117,6 +117,7 @@ Cinematography principles:
 - 180-DEGREE RULE — keep characters on consistent sides of the frame
 - Duration: ALL shots must be ${minDuration}-${maxDuration}s. Dialogue-heavy = ${Math.min(maxDuration, 12)}-${maxDuration}s; action shots = ${minDuration}-${Math.min(maxDuration, 12)}s; establishing shots = ${minDuration}-${Math.min(maxDuration, 10)}s
 - CONTINUITY: the endFrame of shot N must logically connect to the startFrame of shot N+1 (same characters, consistent environment, natural position transition)
+- COVERAGE: generate AT LEAST one shot per SCENE in the screenplay. Do NOT skip or merge scenes. If a scene is complex, split it into multiple shots. Every scene marker (SCENE N) must produce at least one shot.
 
 CRITICAL LANGUAGE RULE: ALL text fields (sceneDescription, startFrame, endFrame, motionScript, dialogues.text, dialogues.character) MUST be in the SAME LANGUAGE as the screenplay. If the screenplay is in Chinese, write ALL fields in Chinese. Only "cameraDirection" uses English (technical terms).
 

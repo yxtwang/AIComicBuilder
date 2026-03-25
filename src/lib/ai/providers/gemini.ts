@@ -65,7 +65,8 @@ export class GeminiProvider implements AIProvider {
     // Attach reference images (character sheets, first frame, etc.)
     if (options?.referenceImages?.length) {
       let imgIndex = 0;
-      for (const imgPath of options.referenceImages) {
+      for (let ri = 0; ri < options.referenceImages.length; ri++) {
+        const imgPath = options.referenceImages[ri];
         try {
           const resolved = path.resolve(imgPath);
           if (fs.existsSync(resolved)) {
@@ -73,7 +74,10 @@ export class GeminiProvider implements AIProvider {
             const ext = path.extname(resolved).toLowerCase();
             const mimeType = ext === ".png" ? "image/png" : "image/jpeg";
             imgIndex++;
-            parts.push({ text: `[Reference Image ${imgIndex}]` });
+            const label = options.referenceLabels?.[ri]
+              ? `[Character Reference: ${options.referenceLabels[ri]}]`
+              : `[Reference Image ${imgIndex}]`;
+            parts.push({ text: label });
             parts.push({ inlineData: { mimeType, data } });
           }
         } catch {
@@ -81,7 +85,16 @@ export class GeminiProvider implements AIProvider {
         }
       }
       if (imgIndex > 0) {
-        parts.push({ text: `\n[END OF REFERENCE IMAGES — ${imgIndex} images total]\nThe generated image MUST reproduce these characters with the EXACT same visual style, appearance, clothing, and proportions as shown in the reference images above.\n\n` + prompt });
+        parts.push({ text: `\n[END OF REFERENCE IMAGES — ${imgIndex} character sheets total]
+CRITICAL CHARACTER CONSISTENCY RULES:
+- Each reference image is a CHARACTER SHEET (turnaround view) showing FRONT, THREE-QUARTER, SIDE PROFILE, and BACK views
+- The character's NAME is printed at the bottom of each reference sheet — use it to match characters in the scene
+- You MUST reproduce EXACTLY: face shape, hairstyle, hair color, clothing design, clothing colors, accessories, body proportions
+- CLOTHING MUST NOT CHANGE — if the reference shows 深青色交领常服, the character MUST wear 深青色交领常服 in the generated frame, NOT 龙袍 or any other outfit
+- If a character's reference shows specific accessories (帽子, 佩刀, 发簪), they MUST appear in the generated frame
+- Art style must match the reference images exactly
+
+` + prompt });
       } else {
         parts.push({ text: prompt });
       }

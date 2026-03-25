@@ -33,7 +33,11 @@ export function ScriptEditor() {
   async function handleSave() {
     if (!project) return;
     setSaving(true);
-    await apiFetch(`/api/projects/${project.id}`, {
+    const episodeId = useProjectStore.getState().currentEpisodeId;
+    const url = episodeId
+      ? `/api/projects/${project.id}/episodes/${episodeId}`
+      : `/api/projects/${project.id}`;
+    await apiFetch(url, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ idea: project.idea, script: project.script }),
@@ -57,6 +61,7 @@ export function ScriptEditor() {
           action: "script_generate",
           payload: { idea },
           modelConfig: getModelConfig(),
+          episodeId: useProjectStore.getState().currentEpisodeId,
         }),
       });
 
@@ -73,7 +78,7 @@ export function ScriptEditor() {
         }
       }
 
-      await fetchProject(project.id);
+      await fetchProject(project.id, useProjectStore.getState().currentEpisodeId ?? undefined);
     } catch (err) {
       console.error("Script generate error:", err);
       toast.error(t("common.generationFailed"));

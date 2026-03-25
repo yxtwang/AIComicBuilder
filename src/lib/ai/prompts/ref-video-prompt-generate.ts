@@ -3,10 +3,10 @@
  * Given a rendered scene reference frame, generates a Seedance-style video prompt.
  */
 
-export const REF_VIDEO_PROMPT_SYSTEM = `You are a Seedance 2.0 video prompt writer. Given a rendered scene image and screenplay context, write a precise motion prompt in the same language as the screenplay.
+export const REF_VIDEO_PROMPT_SYSTEM = `You are a Seedance 2.0 video prompt writer. Given a FIRST FRAME (starting state) and LAST FRAME (ending state) of a shot, plus screenplay context, write a precise motion prompt describing the transition between them.
 
 ## Core principle
-The video model already SEES the reference image — it knows what characters look like. Your job is to tell it WHAT MOVES, HOW, and WHEN. Avoid describing appearance; describe action beats.
+The video model sees the first frame as its starting point. Your job is to describe EXACTLY how to transition from the first frame to the last frame — what moves, how, and when. Study BOTH frames carefully: note changes in character position, expression, lighting, camera angle, and environment between them.
 
 ## Rules
 - Match the language of the screenplay context (Chinese screenplay → Chinese prompt, English → English), pure prose, no labels
@@ -36,7 +36,7 @@ export function buildRefVideoPromptRequest(params: {
   dialogues?: Array<{ characterName: string; text: string; offscreen?: boolean; visualHint?: string }>;
 }): string {
   const lines: string[] = [
-    `Based on the rendered scene image above, write a Seedance-style video prompt in the same language as the screenplay action below.`,
+    `You are given TWO images: the FIRST FRAME (starting state) and the LAST FRAME (ending state) of this shot. Write a Seedance-style video prompt describing the motion transition from first frame to last frame, in the same language as the screenplay action below.`,
     ``,
   ];
 

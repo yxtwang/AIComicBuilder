@@ -10,6 +10,7 @@ export async function enqueueTask(params: {
   payload?: unknown;
   maxRetries?: number;
   scheduledAt?: Date;
+  episodeId?: string;
 }) {
   const id = ulid();
   const [task] = await db
@@ -21,6 +22,7 @@ export async function enqueueTask(params: {
       payload: params.payload,
       maxRetries: params.maxRetries ?? 3,
       scheduledAt: params.scheduledAt,
+      episodeId: params.episodeId ?? null,
     })
     .returning();
   return task;

@@ -23,7 +23,11 @@ export function GenerationModeTab() {
     setProject({ ...project, generationMode: newMode });
 
     try {
-      await apiFetch(`/api/projects/${project.id}`, {
+      const episodeId = useProjectStore.getState().currentEpisodeId;
+      const url = episodeId
+        ? `/api/projects/${project.id}/episodes/${episodeId}`
+        : `/api/projects/${project.id}`;
+      await apiFetch(url, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ generationMode: newMode }),

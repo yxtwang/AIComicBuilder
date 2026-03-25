@@ -6,7 +6,7 @@ import {
   SHOT_SPLIT_SYSTEM,
   buildShotSplitPrompt,
 } from "@/lib/ai/prompts/shot-split";
-import { eq } from "drizzle-orm";
+import { eq, and, or, isNull } from "drizzle-orm";
 import { ulid } from "ulid";
 import type { Task } from "@/lib/task-queue";
 
@@ -15,13 +15,18 @@ export async function handleShotSplit(task: Task) {
     projectId: string;
     screenplay: string;
     modelConfig?: ModelConfigPayload;
+    episodeId?: string;
   };
 
-  // Get characters for this project
+  // Get characters for this project (include main + episode-scoped)
   const projectCharacters = await db
     .select()
     .from(characters)
-    .where(eq(characters.projectId, payload.projectId));
+    .where(
+      payload.episodeId
+        ? and(eq(characters.projectId, payload.projectId), or(isNull(characters.episodeId), eq(characters.episodeId, payload.episodeId)))
+        : eq(characters.projectId, payload.projectId)
+    );
 
   const characterDescriptions = projectCharacters
     .map((c) => `${c.name}: ${c.description}`)
@@ -51,6 +56,7 @@ export async function handleShotSplit(task: Task) {
         sequence: shot.sequence,
         prompt: shot.prompt,
         duration: shot.duration,
+        episodeId: payload.episodeId ?? null,
       })
       .returning();
 
