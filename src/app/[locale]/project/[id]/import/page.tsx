@@ -14,7 +14,7 @@ import { useModelStore } from "@/stores/model-store";
 import { useModelGuard } from "@/hooks/use-model-guard";
 import { toast } from "sonner";
 
-const ACCEPTED = ".txt,.docx,.pdf";
+const ACCEPTED = ".txt,.docx,.pdf,.md,.markdown";
 const MAX_SIZE = 20 * 1024 * 1024;
 
 interface ExtractedCharacter {

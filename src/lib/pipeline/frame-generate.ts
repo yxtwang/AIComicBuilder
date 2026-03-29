@@ -6,6 +6,7 @@ import {
   buildFirstFramePrompt,
   buildLastFramePrompt,
 } from "@/lib/ai/prompts/frame-generate";
+import { resolveSlotContents } from "@/lib/ai/prompts/resolver";
 import { eq, and, lt, desc } from "drizzle-orm";
 import type { Task } from "@/lib/task-queue";
 
@@ -13,6 +14,7 @@ export async function handleFrameGenerate(task: Task) {
   const payload = task.payload as {
     shotId: string;
     projectId: string;
+    userId?: string;
     modelConfig?: ModelConfigPayload;
   };
 
@@ -46,6 +48,11 @@ export async function handleFrameGenerate(task: Task) {
 
   const ai = resolveImageProvider(payload.modelConfig);
 
+  const userId = payload.userId ?? "";
+  const projectId = payload.projectId;
+  const frameFirstSlots = await resolveSlotContents("frame_generate_first", { userId, projectId });
+  const frameLastSlots = await resolveSlotContents("frame_generate_last", { userId, projectId });
+
   await db
     .update(shots)
     .set({ status: "generating" })
@@ -57,6 +64,7 @@ export async function handleFrameGenerate(task: Task) {
     startFrameDesc: shot.startFrameDesc || shot.prompt || "",
     characterDescriptions,
     previousLastFrame: previousShot?.lastFrame || undefined,
+    slotContents: frameFirstSlots,
   });
   const firstFramePath = await ai.generateImage(firstFramePrompt, {
     quality: "hd",
@@ -71,6 +79,7 @@ export async function handleFrameGenerate(task: Task) {
     endFrameDesc: shot.endFrameDesc || shot.prompt || "",
     characterDescriptions,
     firstFramePath,
+    slotContents: frameLastSlots,
   });
   const charRefImages = projectCharacters
     .map((c) => c.referenceImage)

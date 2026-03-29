@@ -1,15 +1,16 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { useProjectStore } from "@/stores/project-store";
 import { useModelStore } from "@/stores/model-store";
 import { useTranslations } from "next-intl";
-import { Sparkles, Save, Loader2, FileText, Lightbulb } from "lucide-react";
+import { Sparkles, Loader2, FileText, Lightbulb } from "lucide-react";
 import { InlineModelPicker } from "@/components/editor/model-selector";
 import { apiFetch } from "@/lib/api-fetch";
 import { useModelGuard } from "@/hooks/use-model-guard";
+import { PromptEditButton } from "@/components/prompt-templates/prompt-edit-button";
 import { toast } from "sonner";
 
 export function ScriptEditor() {
@@ -28,21 +29,55 @@ export function ScriptEditor() {
     }
   }, [project?.script, generating]);
 
+  // Auto-save: debounced (1.5s after last keystroke) + onBlur fallback
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const savingRef = useRef(false);
+
+  const persistNow = useCallback(async () => {
+    const state = useProjectStore.getState();
+    const proj = state.project;
+    if (!proj || savingRef.current) return;
+    savingRef.current = true;
+    setSaving(true);
+    const episodeId = state.currentEpisodeId;
+    const url = episodeId
+      ? `/api/projects/${proj.id}/episodes/${episodeId}`
+      : `/api/projects/${proj.id}`;
+    try {
+      await apiFetch(url, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idea: proj.idea, script: proj.script }),
+      });
+    } catch (err) {
+      console.error("Auto-save error:", err);
+    }
+    savingRef.current = false;
+    setSaving(false);
+  }, []);
+
+  const scheduleSave = useCallback(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      persistNow();
+    }, 1500);
+  }, [persistNow]);
+
+  // Clean up debounce on unmount and flush pending save
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+        persistNow();
+      }
+    };
+  }, [persistNow]);
+
   if (!project) return null;
 
-  async function handleSave() {
-    if (!project) return;
-    setSaving(true);
-    const episodeId = useProjectStore.getState().currentEpisodeId;
-    const url = episodeId
-      ? `/api/projects/${project.id}/episodes/${episodeId}`
-      : `/api/projects/${project.id}`;
-    await apiFetch(url, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ idea: project.idea, script: project.script }),
-    });
-    setSaving(false);
+  function handleSave() {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    persistNow();
   }
 
   async function handleGenerateScript() {
@@ -100,20 +135,14 @@ export function ScriptEditor() {
           </h2>
         </div>
         <div className="flex items-center gap-2">
+          <PromptEditButton promptKeys="script_generate" projectId={project.id} />
           <InlineModelPicker capability="text" />
-          <Button
-            onClick={handleSave}
-            variant="outline"
-            size="sm"
-            disabled={saving}
-          >
-            {saving ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Save className="h-3.5 w-3.5" />
-            )}
-            {t("common.save")}
-          </Button>
+          {saving && (
+            <span className="flex items-center gap-1.5 text-xs text-[--text-muted]">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              {t("common.saving")}
+            </span>
+          )}
           <Button
             onClick={handleGenerateScript}
             disabled={generating || !project.idea?.trim()}
@@ -139,7 +168,8 @@ export function ScriptEditor() {
         </div>
         <Textarea
           value={project.idea}
-          onChange={(e) => updateIdea(e.target.value)}
+          onChange={(e) => { updateIdea(e.target.value); scheduleSave(); }}
+          onBlur={handleSave}
           placeholder={t("project.scriptIdeaPlaceholder")}
           rows={4}
           disabled={generating}
@@ -161,7 +191,8 @@ export function ScriptEditor() {
           <Textarea
             ref={scriptTextareaRef}
             value={project.script}
-            onChange={(e) => updateScript(e.target.value)}
+            onChange={(e) => { updateScript(e.target.value); if (!generating) scheduleSave(); }}
+            onBlur={() => { if (!generating) handleSave(); }}
             rows={16}
             disabled={generating}
             className={`h-[55vh] resize-none overflow-y-auto rounded-xl border-0 bg-transparent px-5 pb-4 font-mono text-sm leading-relaxed placeholder:text-[--text-muted] focus-visible:ring-0 ${

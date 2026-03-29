@@ -10,22 +10,12 @@ import path from "path";
 import { ulid } from "ulid";
 import { enqueueTask } from "@/lib/task-queue";
 import type { TaskType } from "@/lib/task-queue";
-import {
-  SCRIPT_PARSE_SYSTEM,
-  buildScriptParsePrompt,
-} from "@/lib/ai/prompts/script-parse";
-import {
-  SCRIPT_GENERATE_SYSTEM,
-  buildScriptGeneratePrompt,
-} from "@/lib/ai/prompts/script-generate";
-import {
-  CHARACTER_EXTRACT_SYSTEM,
-  buildCharacterExtractPrompt,
-} from "@/lib/ai/prompts/character-extract";
-import {
-  buildShotSplitPrompt,
-  buildShotSplitSystem,
-} from "@/lib/ai/prompts/shot-split";
+import { buildScriptParsePrompt } from "@/lib/ai/prompts/script-parse";
+import { buildScriptGeneratePrompt } from "@/lib/ai/prompts/script-generate";
+import { buildCharacterExtractPrompt } from "@/lib/ai/prompts/character-extract";
+import { buildShotSplitPrompt } from "@/lib/ai/prompts/shot-split";
+import { resolvePrompt, resolveSlotContents } from "@/lib/ai/prompts/resolver";
+import { getPromptDefinition } from "@/lib/ai/prompts/registry";
 import { getModelMaxDuration } from "@/lib/ai/model-limits";
 import {
   buildFirstFramePrompt,
@@ -34,7 +24,7 @@ import {
 import { buildSceneFramePrompt } from "@/lib/ai/prompts/scene-frame-generate";
 import { resolveImageProvider, resolveVideoProvider, resolveAIProvider } from "@/lib/ai/provider-factory";
 import { buildVideoPrompt, buildReferenceVideoPrompt } from "@/lib/ai/prompts/video-generate";
-import { REF_VIDEO_PROMPT_SYSTEM, buildRefVideoPromptRequest } from "@/lib/ai/prompts/ref-video-prompt-generate";
+import { buildRefVideoPromptRequest } from "@/lib/ai/prompts/ref-video-prompt-generate";
 import { buildCharacterTurnaroundPrompt } from "@/lib/ai/prompts/character-image";
 import { assembleVideo } from "@/lib/video/ffmpeg";
 
@@ -131,15 +121,15 @@ export async function POST(
   const { action, payload, modelConfig, episodeId } = body;
 
   if (action === "script_generate") {
-    return handleScriptGenerate(projectId, payload, modelConfig, episodeId);
+    return handleScriptGenerate(projectId, userId, payload, modelConfig, episodeId);
   }
 
   if (action === "script_parse") {
-    return handleScriptParseStream(projectId, modelConfig, episodeId);
+    return handleScriptParseStream(projectId, userId, modelConfig, episodeId);
   }
 
   if (action === "character_extract") {
-    return handleCharacterExtract(projectId, modelConfig, episodeId);
+    return handleCharacterExtract(projectId, userId, modelConfig, episodeId);
   }
 
   if (action === "single_character_image") {
@@ -151,7 +141,7 @@ export async function POST(
   }
 
   if (action === "shot_split") {
-    return handleShotSplitStream(projectId, modelConfig, episodeId);
+    return handleShotSplitStream(projectId, userId, modelConfig, episodeId);
   }
 
   if (action === "single_shot_rewrite") {
@@ -159,43 +149,47 @@ export async function POST(
   }
 
   if (action === "batch_frame_generate") {
-    return handleBatchFrameGenerate(projectId, payload, modelConfig, episodeId);
+    return handleBatchFrameGenerate(projectId, userId, payload, modelConfig, episodeId);
   }
 
   if (action === "single_frame_generate") {
-    return handleSingleFrameGenerate(projectId, payload, modelConfig, episodeId);
+    return handleSingleFrameGenerate(projectId, userId, payload, modelConfig, episodeId);
   }
 
   if (action === "single_video_generate") {
-    return handleSingleVideoGenerate(payload, modelConfig);
+    return handleSingleVideoGenerate(projectId, userId, payload, modelConfig);
   }
 
   if (action === "batch_video_generate") {
-    return handleBatchVideoGenerate(projectId, payload, modelConfig, episodeId);
+    return handleBatchVideoGenerate(projectId, userId, payload, modelConfig, episodeId);
   }
 
   if (action === "single_scene_frame") {
-    return handleSingleSceneFrame(projectId, payload, modelConfig);
+    return handleSingleSceneFrame(projectId, userId, payload, modelConfig);
   }
 
   if (action === "batch_scene_frame") {
-    return handleBatchSceneFrame(projectId, payload, modelConfig, episodeId);
+    return handleBatchSceneFrame(projectId, userId, payload, modelConfig, episodeId);
   }
 
   if (action === "single_reference_video") {
-    return handleSingleReferenceVideo(projectId, payload, modelConfig);
+    return handleSingleReferenceVideo(projectId, userId, payload, modelConfig);
   }
 
   if (action === "batch_reference_video") {
-    return handleBatchReferenceVideo(projectId, payload, modelConfig, episodeId);
+    return handleBatchReferenceVideo(projectId, userId, payload, modelConfig, episodeId);
   }
 
   if (action === "single_video_prompt") {
-    return handleSingleVideoPrompt(projectId, payload, modelConfig);
+    return handleSingleVideoPrompt(projectId, userId, payload, modelConfig);
   }
 
   if (action === "batch_video_prompt") {
-    return handleBatchVideoPrompt(projectId, payload, modelConfig, episodeId);
+    return handleBatchVideoPrompt(projectId, userId, payload, modelConfig, episodeId);
+  }
+
+  if (action === "ai_optimize_text") {
+    return handleAiOptimizeText(payload, modelConfig);
   }
 
   if (action === "video_assemble") {
@@ -206,7 +200,7 @@ export async function POST(
   const task = await enqueueTask({
     type: action as NonNullable<TaskType>,
     projectId,
-    payload: { projectId, ...payload, modelConfig, episodeId },
+    payload: { projectId, ...payload, modelConfig, episodeId, userId },
     ...(episodeId ? { episodeId } : {}),
   });
 
@@ -217,6 +211,7 @@ export async function POST(
 
 async function handleScriptGenerate(
   projectId: string,
+  userId: string,
   payload?: Record<string, unknown>,
   modelConfig?: ModelConfig,
   episodeId?: string
@@ -247,10 +242,11 @@ async function handleScriptGenerate(
   }
 
   const model = createLanguageModel(modelConfig.text);
+  const scriptGenerateSystem = await resolvePrompt("script_generate", { userId, projectId });
 
   const result = streamText({
     model,
-    system: SCRIPT_GENERATE_SYSTEM,
+    system: scriptGenerateSystem,
     prompt: buildScriptGeneratePrompt(idea),
     temperature: 0.8,
     onFinish: async ({ text }) => {
@@ -280,6 +276,7 @@ async function handleScriptGenerate(
 
 async function handleScriptParseStream(
   projectId: string,
+  userId: string,
   modelConfig?: ModelConfig,
   episodeId?: string
 ) {
@@ -308,10 +305,11 @@ async function handleScriptParseStream(
   }
 
   const model = createLanguageModel(modelConfig.text);
+  const scriptParseSystem = await resolvePrompt("script_parse", { userId, projectId });
 
   const result = streamText({
     model,
-    system: SCRIPT_PARSE_SYSTEM,
+    system: scriptParseSystem,
     prompt: buildScriptParsePrompt(script),
     temperature: 0.7,
     onFinish: async ({ text }) => {
@@ -337,6 +335,7 @@ async function handleScriptParseStream(
 
 async function handleCharacterExtract(
   projectId: string,
+  userId: string,
   modelConfig?: ModelConfig,
   episodeId?: string
 ) {
@@ -379,72 +378,77 @@ async function handleCharacterExtract(
   }
 
   const model = createLanguageModel(modelConfig.text);
+  const charExtractSystem = await resolvePrompt("character_extract", { userId, projectId });
+  console.log("[CharacterExtract] resolved system prompt:\n", charExtractSystem);
 
-  const result = streamText({
+  const { text } = await generateText({
     model,
-    system: CHARACTER_EXTRACT_SYSTEM,
+    system: charExtractSystem,
     prompt: buildCharacterExtractPrompt(script),
-    onFinish: async ({ text }) => {
-      try {
-        const extracted = JSON.parse(extractJSON(text)) as Array<{
-          name: string;
-          description: string;
-          visualHint?: string;
-          scope?: string;
-        }>;
-
-        let reusedCount = 0;
-        let createdCount = 0;
-        const linkedCharIds: string[] = [];
-
-        for (const char of extracted) {
-          const key = char.name.toLowerCase().trim();
-          const existing = existingByName.get(key);
-
-          if (existing) {
-            // Reuse existing character
-            linkedCharIds.push(existing.id);
-            reusedCount++;
-          } else {
-            // Create new character
-            const charId = ulid();
-            const scope = char.scope === "guest" ? "guest" : "main";
-            await db.insert(characters).values({
-              id: charId,
-              projectId,
-              name: char.name,
-              description: char.description,
-              visualHint: char.visualHint ?? "",
-              scope,
-              episodeId: null,
-            });
-            existingByName.set(key, { id: charId, name: char.name } as typeof existingChars[0]);
-            linkedCharIds.push(charId);
-            createdCount++;
-          }
-        }
-
-        // Create episode_characters links
-        if (episodeId) {
-          for (const charId of linkedCharIds) {
-            await db.insert(episodeCharacters).values({
-              id: ulid(),
-              episodeId,
-              characterId: charId,
-            });
-          }
-        }
-
-        console.log(
-          `[CharacterExtract] ${extracted.length} characters: ${reusedCount} reused, ${createdCount} new, ${linkedCharIds.length} linked to episode`
-        );
-      } catch (err) {
-        console.error("[CharacterExtract] onFinish error:", err);
-      }
-    },
   });
 
-  return result.toTextStreamResponse();
+  const extracted = JSON.parse(extractJSON(text)) as Array<{
+    name: string;
+    description: string;
+    visualHint?: string;
+    scope?: string;
+  }>;
+
+  let reusedCount = 0;
+  let createdCount = 0;
+  const linkedCharIds: string[] = [];
+
+  for (const char of extracted) {
+    const key = char.name.toLowerCase().trim();
+    const existing = existingByName.get(key);
+
+    if (existing) {
+      // Reuse existing character — always update description from new extraction
+      await db.update(characters)
+        .set({
+          description: char.description,
+          visualHint: char.visualHint ?? existing.visualHint ?? "",
+          scope: (char.scope === "guest" ? "guest" : "main") as "main" | "guest",
+        })
+        .where(eq(characters.id, existing.id));
+      console.log(`[CharacterExtract] Updated existing character "${char.name}" (${existing.id}), desc length: ${char.description.length}`);
+      linkedCharIds.push(existing.id);
+      reusedCount++;
+    } else {
+      // Create new character
+      const charId = ulid();
+      const scope = char.scope === "guest" ? "guest" : "main";
+      await db.insert(characters).values({
+        id: charId,
+        projectId,
+        name: char.name,
+        description: char.description,
+        visualHint: char.visualHint ?? "",
+        scope,
+        episodeId: null,
+      });
+      existingByName.set(key, { id: charId, name: char.name } as typeof existingChars[0]);
+      linkedCharIds.push(charId);
+      createdCount++;
+    }
+  }
+
+  // Create episode_characters links
+  if (episodeId) {
+    for (const charId of linkedCharIds) {
+      await db.insert(episodeCharacters).values({
+        id: ulid(),
+        episodeId,
+        characterId: charId,
+      });
+    }
+  }
+
+  console.log(
+    `[CharacterExtract] ${extracted.length} characters: ${reusedCount} reused, ${createdCount} new, ${linkedCharIds.length} linked to episode`
+  );
+
+  return NextResponse.json({ characters: extracted });
 }
 
 // --- single_character_image: generate turnaround image for one character ---
@@ -553,6 +557,7 @@ async function handleBatchCharacterImage(
 
 async function handleShotSplitStream(
   projectId: string,
+  userId: string,
   modelConfig?: ModelConfig,
   episodeId?: string
 ) {
@@ -605,7 +610,9 @@ async function handleShotSplitStream(
 
   const model = createLanguageModel(modelConfig.text);
   const videoMaxDuration = getModelMaxDuration(modelConfig?.video?.modelId);
-  const systemPrompt = buildShotSplitSystem(videoMaxDuration);
+  const shotSplitSlots = await resolveSlotContents("shot_split", { userId, projectId });
+  const shotSplitDef = getPromptDefinition("shot_split")!;
+  const systemPrompt = shotSplitDef.buildFullPrompt(shotSplitSlots, { maxDuration: videoMaxDuration });
   const jsonMode = { openai: { response_format: { type: "json_object" } } };
 
   // Split screenplay into chunks by SCENE markers (~8 scenes per chunk)
@@ -863,6 +870,7 @@ IMPORTANT: Keep the same scene, characters, and narrative intent. Only rephrase 
 
 async function handleBatchFrameGenerate(
   projectId: string,
+  userId: string,
   payload?: Record<string, unknown>,
   modelConfig?: ModelConfig,
   episodeId?: string
@@ -889,9 +897,71 @@ async function handleBatchFrameGenerate(
     return NextResponse.json({ results: [], message: "No shots found" });
   }
 
+  const continueFromPrev = payload?.continueFromPrev === true;
+  let copiedFirstFrame: string | undefined;
+
   const versionedUploadDir = batchVersionId
     ? await getVersionedUploadDir(batchVersionId)
     : process.env.UPLOAD_DIR || "./uploads";
+
+  if (continueFromPrev && episodeId) {
+    // 1. Get current episode's sequence
+    const [currentEp] = await db
+      .select({ sequence: episodes.sequence })
+      .from(episodes)
+      .where(eq(episodes.id, episodeId));
+
+    if (currentEp && currentEp.sequence > 1) {
+      // 2. Find previous episode
+      const [prevEp] = await db
+        .select({ id: episodes.id })
+        .from(episodes)
+        .where(
+          and(
+            eq(episodes.projectId, projectId),
+            eq(episodes.sequence, currentEp.sequence - 1)
+          )
+        );
+
+      if (prevEp) {
+        // 3. Get last shot of previous episode
+        const [lastShot] = await db
+          .select({ lastFrame: shots.lastFrame })
+          .from(shots)
+          .where(eq(shots.episodeId, prevEp.id))
+          .orderBy(desc(shots.sequence))
+          .limit(1);
+
+        if (!lastShot?.lastFrame) {
+          return NextResponse.json(
+            { error: "上一集尚未生成帧，无法续接" },
+            { status: 400 }
+          );
+        }
+
+        // 4. Copy the file
+        const fs = await import("node:fs");
+        const path = await import("node:path");
+        const { ulid: genId } = await import("ulid");
+        const ext = path.extname(lastShot.lastFrame);
+        const destDir = path.resolve(versionedUploadDir, "frames");
+        fs.mkdirSync(destDir, { recursive: true });
+        const destPath = path.join(destDir, `${genId()}${ext}`);
+        fs.copyFileSync(path.resolve(lastShot.lastFrame), destPath);
+        const relativeDest = path.relative(process.cwd(), destPath);
+
+        // 5. Update first shot's firstFrame
+        if (allShots.length > 0) {
+          await db
+            .update(shots)
+            .set({ firstFrame: relativeDest })
+            .where(eq(shots.id, allShots[0].id));
+          allShots[0] = { ...allShots[0], firstFrame: relativeDest };
+          copiedFirstFrame = relativeDest;
+        }
+      }
+    }
+  }
 
   // Fetch only characters linked to this episode
   let frameCharacters: typeof characters.$inferSelect[];
@@ -924,6 +994,9 @@ async function handleBatchFrameGenerate(
 
   console.log(`[BatchFrameGenerate] Total: ${allShots.length} shots, need: ${needProcess.length}, skip: ${skipCount}, characters: ${frameCharacters.length}`);
 
+  const frameFirstSlots = await resolveSlotContents("frame_generate_first", { userId, projectId });
+  const frameLastSlots = await resolveSlotContents("frame_generate_last", { userId, projectId });
+
   let previousLastFrame: string | undefined;
 
   for (let i = 0; i < allShots.length; i++) {
@@ -949,12 +1022,16 @@ async function handleBatchFrameGenerate(
 
       let firstFramePath: string;
 
-      if (i === 0 || !previousLastFrame) {
+      if (copiedFirstFrame && i === 0) {
+        // Episode continuation: use copied frame from previous episode
+        firstFramePath = copiedFirstFrame;
+      } else if (i === 0 || !previousLastFrame) {
         // First shot or broken chain: generate first frame
         const firstPrompt = buildFirstFramePrompt({
           sceneDescription: shot.prompt || "",
           startFrameDesc: shot.startFrameDesc || shot.prompt || "",
           characterDescriptions,
+          slotContents: frameFirstSlots,
         });
         firstFramePath = await ai.generateImage(firstPrompt, {
           ...imageOpts,
@@ -973,6 +1050,7 @@ async function handleBatchFrameGenerate(
         endFrameDesc: shot.endFrameDesc || shot.prompt || "",
         characterDescriptions,
         firstFramePath,
+        slotContents: frameLastSlots,
       });
       const lastFramePath = await ai.generateImage(lastPrompt, {
         ...imageOpts,
@@ -1030,6 +1108,7 @@ async function handleBatchFrameGenerate(
 
 async function handleSingleFrameGenerate(
   projectId: string,
+  userId: string,
   payload?: Record<string, unknown>,
   modelConfig?: ModelConfig,
   episodeId?: string
@@ -1106,6 +1185,9 @@ async function handleSingleFrameGenerate(
   const ai = resolveImageProvider(modelConfig, versionedUploadDir);
   const imageOpts = ratioToImageOpts(payload?.ratio as string | undefined);
 
+  const frameFirstSlots = await resolveSlotContents("frame_generate_first", { userId, projectId });
+  const frameLastSlots = await resolveSlotContents("frame_generate_last", { userId, projectId });
+
   try {
     await db.update(shots).set({ status: "generating" }).where(eq(shots.id, shotId));
 
@@ -1118,6 +1200,7 @@ async function handleSingleFrameGenerate(
         sceneDescription: shot.prompt || "",
         startFrameDesc: shot.startFrameDesc || shot.prompt || "",
         characterDescriptions,
+        slotContents: frameFirstSlots,
       });
       firstFramePath = await ai.generateImage(firstPrompt, {
         ...imageOpts,
@@ -1131,6 +1214,7 @@ async function handleSingleFrameGenerate(
       endFrameDesc: shot.endFrameDesc || shot.prompt || "",
       characterDescriptions,
       firstFramePath,
+      slotContents: frameLastSlots,
     });
     const lastFramePath = await ai.generateImage(lastPrompt, {
       ...imageOpts,
@@ -1162,6 +1246,8 @@ async function handleSingleFrameGenerate(
 // --- single_video_generate: synchronous video generation for one shot ---
 
 async function handleSingleVideoGenerate(
+  projectId: string,
+  userId: string,
   payload?: Record<string, unknown>,
   modelConfig?: ModelConfig
 ) {
@@ -1198,6 +1284,7 @@ async function handleSingleVideoGenerate(
     .orderBy(asc(dialogues.sequence));
 
   const videoProvider = resolveVideoProvider(modelConfig, versionedUploadDir);
+  const videoSlots = await resolveSlotContents("video_generate", { userId, projectId });
 
   try {
     await db.update(shots).set({ status: "generating" }).where(eq(shots.id, shotId));
@@ -1213,7 +1300,7 @@ async function handleSingleVideoGenerate(
     const onScreenDialogueChars = shotDialogues
       .map((d) => shotCharacters.find((c) => c.id === d.characterId)?.name ?? "Unknown")
       .filter((name) => isCharacterOnScreen(name, videoContextForDialogue, shot.startFrameDesc));
-    
+
     const dialogueList = shotDialogues.map((d) => {
       const char = shotCharacters.find((c) => c.id === d.characterId);
       const characterName = char?.name ?? "Unknown";
@@ -1234,6 +1321,7 @@ async function handleSingleVideoGenerate(
       duration: effectiveDuration,
       characters: shotCharacters,
       dialogues: dialogueList.length > 0 ? dialogueList : undefined,
+      slotContents: videoSlots,
     });
 
     const result = await videoProvider.generateVideo({
@@ -1261,6 +1349,7 @@ async function handleSingleVideoGenerate(
 
 async function handleBatchVideoGenerate(
   projectId: string,
+  userId: string,
   payload?: Record<string, unknown>,
   modelConfig?: ModelConfig,
   episodeId?: string
@@ -1299,6 +1388,7 @@ async function handleBatchVideoGenerate(
   const videoProvider = resolveVideoProvider(modelConfig, versionedUploadDir);
   const ratio = (payload?.ratio as string) || "16:9";
   const videoMaxDuration = getModelMaxDuration(modelConfig?.video?.modelId);
+  const videoSlots = await resolveSlotContents("video_generate", { userId, projectId });
 
   // Mark all as generating
   await Promise.all(
@@ -1322,7 +1412,7 @@ async function handleBatchVideoGenerate(
         const onScreenDialogueChars = shotDialogues
           .map((d) => batchCharacters.find((c) => c.id === d.characterId)?.name ?? "Unknown")
           .filter((name) => isCharacterOnScreen(name, videoContextForDialogue, shot.startFrameDesc));
-        
+
         const dialogueList = shotDialogues.map((d) => {
           const char = batchCharacters.find((c) => c.id === d.characterId);
           const characterName = char?.name ?? "Unknown";
@@ -1344,6 +1434,7 @@ async function handleBatchVideoGenerate(
           duration: effectiveDuration,
           characters: batchCharacters,
           dialogues: dialogueList.length > 0 ? dialogueList : undefined,
+          slotContents: videoSlots,
         });
 
         const result = await videoProvider.generateVideo({
@@ -1376,6 +1467,7 @@ async function handleBatchVideoGenerate(
 
 async function handleSingleSceneFrame(
   projectId: string,
+  userId: string,
   payload?: Record<string, unknown>,
   modelConfig?: ModelConfig
 ) {
@@ -1419,6 +1511,7 @@ async function handleSingleSceneFrame(
     await db.update(shots).set({ status: "generating" }).where(eq(shots.id, shotId));
 
     const imageProvider = resolveImageProvider(modelConfig, versionedUploadDir);
+    const slotContents = await resolveSlotContents("scene_frame_generate", { userId, projectId });
     const sceneFramePrompt = buildSceneFramePrompt({
       sceneDescription: shot.prompt || "",
       charRefMapping,
@@ -1426,6 +1519,7 @@ async function handleSingleSceneFrame(
       cameraDirection: shot.cameraDirection,
       startFrameDesc: shot.startFrameDesc,
       motionScript: shot.motionScript,
+      slotContents,
     });
 
     console.log(`[SingleSceneFrame] Shot ${shot.sequence}: generating scene frame, mapping="${charRefMapping}"`);
@@ -1455,6 +1549,7 @@ async function handleSingleSceneFrame(
 
 async function handleBatchSceneFrame(
   projectId: string,
+  userId: string,
   payload?: Record<string, unknown>,
   modelConfig?: ModelConfig,
   episodeId?: string
@@ -1505,6 +1600,7 @@ async function handleBatchSceneFrame(
     .join("\n");
 
   const imageProvider = resolveImageProvider(modelConfig, versionedUploadDir);
+  const sceneSlotContents = await resolveSlotContents("scene_frame_generate", { userId, projectId });
 
   await Promise.all(
     eligible.map((shot) =>
@@ -1528,6 +1624,7 @@ async function handleBatchSceneFrame(
         characterDescriptions,
         cameraDirection: shot.cameraDirection,
         startFrameDesc: shot.startFrameDesc,
+        slotContents: sceneSlotContents,
         motionScript: shot.motionScript,
       });
 
@@ -1558,6 +1655,7 @@ async function handleBatchSceneFrame(
 
 async function handleSingleReferenceVideo(
   projectId: string,
+  userId: string,
   payload?: Record<string, unknown>,
   modelConfig?: ModelConfig
 ) {
@@ -1627,6 +1725,7 @@ async function handleSingleReferenceVideo(
   });
 
   const ratio = (payload?.ratio as string) || "16:9";
+  const refVideoSlots = await resolveSlotContents("ref_video_generate", { userId, projectId });
 
   try {
     await db.update(shots).set({ status: "generating" }).where(eq(shots.id, shotId));
@@ -1635,6 +1734,7 @@ async function handleSingleReferenceVideo(
     let sceneFramePath = shot.sceneRefFrame ?? null;
     if (!sceneFramePath) {
       const imageProvider = resolveImageProvider(modelConfig, versionedUploadDir);
+      const refSlotContents = await resolveSlotContents("scene_frame_generate", { userId, projectId });
       const sceneFramePrompt = buildSceneFramePrompt({
         sceneDescription: shot.prompt || "",
         charRefMapping,
@@ -1642,6 +1742,7 @@ async function handleSingleReferenceVideo(
         cameraDirection: shot.cameraDirection,
         startFrameDesc: shot.startFrameDesc,
         motionScript: shot.motionScript,
+        slotContents: refSlotContents,
       });
       console.log(`[SingleReferenceVideo] Shot ${shot.sequence}: generating scene frame, mapping="${charRefMapping}"`);
       sceneFramePath = await imageProvider.generateImage(sceneFramePrompt, {
@@ -1666,6 +1767,7 @@ async function handleSingleReferenceVideo(
       videoPrompt = shot.videoPrompt;
     } else {
       const textProvider = resolveAIProvider(modelConfig);
+      const refVideoSystem = await resolvePrompt("ref_video_prompt", { userId, projectId });
       try {
         const motionContext = shot.motionScript || shot.videoScript || shot.prompt || "";
         const promptRequest = buildRefVideoPromptRequest({
@@ -1677,7 +1779,7 @@ async function handleSingleReferenceVideo(
         });
         console.log(`[SingleReferenceVideo] Shot ${shot.sequence} promptRequest:\n${promptRequest}`);
         const rawPrompt = await textProvider.generateText(promptRequest, {
-          systemPrompt: REF_VIDEO_PROMPT_SYSTEM,
+          systemPrompt: refVideoSystem,
           images: [sceneFramePath],
           temperature: 0.7,
         });
@@ -1690,6 +1792,7 @@ async function handleSingleReferenceVideo(
           duration: effectiveDuration,
           characters: projectCharacters,
           dialogues: dialogueList.length > 0 ? dialogueList : undefined,
+          slotContents: refVideoSlots,
         });
       }
     }
@@ -1727,6 +1830,7 @@ async function handleSingleReferenceVideo(
 
 async function handleBatchReferenceVideo(
   projectId: string,
+  userId: string,
   payload?: Record<string, unknown>,
   modelConfig?: ModelConfig,
   episodeId?: string
@@ -1784,8 +1888,10 @@ async function handleBatchReferenceVideo(
   const imageProvider = resolveImageProvider(modelConfig, versionedUploadDir);
   const videoProvider = resolveVideoProvider(modelConfig, versionedUploadDir);
   const textProvider = resolveAIProvider(modelConfig);
+  const refVideoSystem = await resolvePrompt("ref_video_prompt", { userId, projectId });
   const ratio = (payload?.ratio as string) || "16:9";
   const videoMaxDuration = getModelMaxDuration(modelConfig?.video?.modelId);
+  const refVideoSlots = await resolveSlotContents("ref_video_generate", { userId, projectId });
 
   await Promise.all(
     eligible.map((shot) =>
@@ -1806,7 +1912,7 @@ async function handleBatchReferenceVideo(
         const onScreenDialogueChars = shotDialogues
           .map((d) => projectCharacters.find((c) => c.id === d.characterId)?.name ?? "Unknown")
           .filter((name) => isCharacterOnScreen(name, videoContextForDialogue, shot.startFrameDesc));
-        
+
         const dialogueList = shotDialogues.map((d) => {
           const char = projectCharacters.find((c) => c.id === d.characterId);
           const characterName = char?.name ?? "Unknown";
@@ -1821,6 +1927,7 @@ async function handleBatchReferenceVideo(
         });
 
         // Step 1: Generate scene reference frame (Toonflow-style)
+        const batchRefSlots = await resolveSlotContents("scene_frame_generate", { userId, projectId });
         const sceneFramePrompt = buildSceneFramePrompt({
           sceneDescription: shot.prompt || "",
           charRefMapping,
@@ -1828,6 +1935,7 @@ async function handleBatchReferenceVideo(
           cameraDirection: shot.cameraDirection,
           startFrameDesc: shot.startFrameDesc,
           motionScript: shot.motionScript,
+          slotContents: batchRefSlots,
         });
 
         console.log(`[BatchReferenceVideo] Shot ${shot.sequence}: generating scene frame, mapping="${charRefMapping}"`);
@@ -1855,7 +1963,7 @@ async function handleBatchReferenceVideo(
               dialogues: dialogueList.length > 0 ? dialogueList : undefined,
             });
             const rawPrompt = await textProvider.generateText(promptRequest, {
-              systemPrompt: REF_VIDEO_PROMPT_SYSTEM,
+              systemPrompt: refVideoSystem,
               images: [sceneFramePath],
               temperature: 0.7,
             });
@@ -1868,6 +1976,7 @@ async function handleBatchReferenceVideo(
               duration: effectiveDuration,
               characters: projectCharacters,
               dialogues: dialogueList.length > 0 ? dialogueList : undefined,
+              slotContents: refVideoSlots,
             });
           }
         }
@@ -2007,6 +2116,7 @@ async function handleVideoAssembleSync(projectId: string, payload?: Record<strin
 
 async function handleSingleVideoPrompt(
   projectId: string,
+  userId: string,
   payload?: Record<string, unknown>,
   modelConfig?: ModelConfig
 ) {
@@ -2017,12 +2127,27 @@ async function handleSingleVideoPrompt(
   const [shot] = await db.select().from(shots).where(eq(shots.id, shotId)).limit(1);
   if (!shot) return NextResponse.json({ error: "Shot not found" }, { status: 404 });
 
-  // Collect first + last frames for vision (both needed for transition prompt)
+  // Determine generation mode to decide which frames to pass
+  let genMode = "keyframe";
+  if (shot.episodeId) {
+    const [ep] = await db.select({ generationMode: episodes.generationMode }).from(episodes).where(eq(episodes.id, shot.episodeId));
+    genMode = ep?.generationMode ?? "keyframe";
+  } else {
+    const [proj] = await db.select({ generationMode: projects.generationMode }).from(projects).where(eq(projects.id, projectId));
+    genMode = proj?.generationMode ?? "keyframe";
+  }
+
+  // Keyframe mode: pass first + last frames for transition description
+  // Reference mode: pass only the scene reference frame
   const visionFrames: string[] = [];
-  if (shot.firstFrame) visionFrames.push(shot.firstFrame);
-  if (shot.lastFrame) visionFrames.push(shot.lastFrame);
-  if (visionFrames.length === 0 && shot.sceneRefFrame) visionFrames.push(shot.sceneRefFrame);
-  console.log(`[SingleVideoPrompt] shot.sequence=${shot.sequence}, frames=${visionFrames.length} (first=${!!shot.firstFrame}, last=${!!shot.lastFrame}, sceneRef=${!!shot.sceneRefFrame})`);
+  if (genMode === "reference") {
+    if (shot.sceneRefFrame) visionFrames.push(shot.sceneRefFrame);
+  } else {
+    if (shot.firstFrame) visionFrames.push(shot.firstFrame);
+    if (shot.lastFrame) visionFrames.push(shot.lastFrame);
+    if (visionFrames.length === 0 && shot.sceneRefFrame) visionFrames.push(shot.sceneRefFrame);
+  }
+  console.log(`[SingleVideoPrompt] shot.sequence=${shot.sequence}, mode=${genMode}, frames=${visionFrames.length}`);
   if (visionFrames.length === 0) {
     return NextResponse.json({ error: "No frame available. Generate frames first." }, { status: 400 });
   }
@@ -2056,6 +2181,7 @@ async function handleSingleVideoPrompt(
     const videoMaxDuration = getModelMaxDuration(videoModelId);
     const effectiveDuration = Math.min(shot.duration ?? 10, videoMaxDuration);
     const textProvider = resolveAIProvider(modelConfig);
+    const refVideoSystem = await resolvePrompt("ref_video_prompt", { userId, projectId });
     const motionContext = shot.motionScript || shot.videoScript || shot.prompt || "";
     const promptRequest = buildRefVideoPromptRequest({
       motionScript: motionContext,
@@ -2066,7 +2192,7 @@ async function handleSingleVideoPrompt(
     });
     console.log(`[SingleVideoPrompt] Shot ${shot.sequence} promptRequest:\n${promptRequest}`);
     const rawPrompt = await textProvider.generateText(promptRequest, {
-      systemPrompt: REF_VIDEO_PROMPT_SYSTEM,
+      systemPrompt: refVideoSystem,
       images: visionFrames,
     });
     const videoPrompt = `Duration: ${effectiveDuration}s.\n\n${rawPrompt.trim()}`;
@@ -2083,6 +2209,7 @@ async function handleSingleVideoPrompt(
 
 async function handleBatchVideoPrompt(
   projectId: string,
+  userId: string,
   payload?: Record<string, unknown>,
   modelConfig?: ModelConfig,
   episodeId?: string
@@ -2099,10 +2226,21 @@ async function handleBatchVideoPrompt(
   // Only process shots that have frames
   const eligible = batchShots.filter((s) => s.firstFrame || s.lastFrame || s.sceneRefFrame);
 
+  // Determine generation mode for frame selection
+  let batchGenMode = "keyframe";
+  if (episodeId) {
+    const [ep] = await db.select({ generationMode: episodes.generationMode }).from(episodes).where(eq(episodes.id, episodeId));
+    batchGenMode = ep?.generationMode ?? "keyframe";
+  } else {
+    const [proj] = await db.select({ generationMode: projects.generationMode }).from(projects).where(eq(projects.id, projectId));
+    batchGenMode = proj?.generationMode ?? "keyframe";
+  }
+
   const textProvider = resolveAIProvider(modelConfig);
+  const refVideoSystem = await resolvePrompt("ref_video_prompt", { userId, projectId });
   const videoMaxDuration = getModelMaxDuration(modelConfig?.video?.modelId);
 
-  console.log(`[BatchVideoPrompt] Processing ${eligible.length} shots (${batchShots.length} total, ${batchCharacters.length} chars)`);
+  console.log(`[BatchVideoPrompt] Processing ${eligible.length} shots (${batchShots.length} total, ${batchCharacters.length} chars, mode=${batchGenMode})`);
   const bvpStartTime = Date.now();
 
   const results = await Promise.all(
@@ -2110,12 +2248,15 @@ async function handleBatchVideoPrompt(
       try {
         const shotStart = Date.now();
         const effectiveDuration = Math.min(shot.duration ?? 10, videoMaxDuration);
-        // Collect frames for vision: first frame + last frame (both needed for transition)
+        // Keyframe: pass first + last frames; Reference: pass only scene ref frame
         const visionFrames: string[] = [];
-        if (shot.firstFrame) visionFrames.push(shot.firstFrame);
-        if (shot.lastFrame) visionFrames.push(shot.lastFrame);
-        // Fallback to scene ref frame if no first/last frames
-        if (visionFrames.length === 0 && shot.sceneRefFrame) visionFrames.push(shot.sceneRefFrame);
+        if (batchGenMode === "reference") {
+          if (shot.sceneRefFrame) visionFrames.push(shot.sceneRefFrame);
+        } else {
+          if (shot.firstFrame) visionFrames.push(shot.firstFrame);
+          if (shot.lastFrame) visionFrames.push(shot.lastFrame);
+          if (visionFrames.length === 0 && shot.sceneRefFrame) visionFrames.push(shot.sceneRefFrame);
+        }
         const shotDialogues = await db
           .select({ text: dialogues.text, characterId: dialogues.characterId, sequence: dialogues.sequence })
           .from(dialogues)
@@ -2145,7 +2286,7 @@ async function handleBatchVideoPrompt(
           dialogues: dialogueList.length > 0 ? dialogueList : undefined,
         });
         const rawPrompt = await textProvider.generateText(promptRequest, {
-          systemPrompt: REF_VIDEO_PROMPT_SYSTEM,
+          systemPrompt: refVideoSystem,
           images: visionFrames,
         });
         const videoPrompt = `Duration: ${effectiveDuration}s.\n\n${rawPrompt.trim()}`;
@@ -2163,4 +2304,41 @@ async function handleBatchVideoPrompt(
   const errCount = results.filter((r) => r.status === "error").length;
   console.log(`[BatchVideoPrompt] Done: ${okCount} ok, ${errCount} errors, total ${((Date.now() - bvpStartTime) / 1000).toFixed(1)}s`);
   return NextResponse.json({ results, status: "ok" });
+}
+
+// --- ai_optimize_text: use AI to optimize a text field ---
+
+async function handleAiOptimizeText(
+  payload?: Record<string, unknown>,
+  modelConfig?: ModelConfig
+) {
+  const originalText = payload?.originalText as string;
+  const instruction = payload?.instruction as string;
+
+  if (!originalText || !instruction) {
+    return NextResponse.json({ error: "Missing originalText or instruction" }, { status: 400 });
+  }
+  if (!modelConfig?.text) {
+    return NextResponse.json({ error: "No text model configured" }, { status: 400 });
+  }
+
+  const model = createLanguageModel(modelConfig.text);
+  const { text } = await generateText({
+    model,
+    system: `你是一位专业的AI动画内容优化专家。用户会给你一段原始文本和优化指令，请根据指令优化原始文本。
+规则：
+- 只输出优化后的文本，不要添加任何解释、前言或标记
+- 保持原文的语言（中文输入→中文输出）
+- 保持原文的整体结构和用途
+- 根据优化指令做针对性改进`,
+    prompt: `原始文本：
+${originalText}
+
+优化指令：
+${instruction}
+
+请输出优化后的文本：`,
+  });
+
+  return NextResponse.json({ optimizedText: text.trim() });
 }

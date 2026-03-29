@@ -2,10 +2,8 @@ import { db } from "@/lib/db";
 import { characters } from "@/lib/db/schema";
 import { resolveAIProvider } from "@/lib/ai/provider-factory";
 import type { ModelConfigPayload } from "@/lib/ai/provider-factory";
-import {
-  CHARACTER_EXTRACT_SYSTEM,
-  buildCharacterExtractPrompt,
-} from "@/lib/ai/prompts/character-extract";
+import { buildCharacterExtractPrompt } from "@/lib/ai/prompts/character-extract";
+import { resolvePrompt } from "@/lib/ai/prompts/resolver";
 import { and, eq } from "drizzle-orm";
 import { ulid } from "ulid";
 import type { Task } from "@/lib/task-queue";
@@ -16,12 +14,18 @@ export async function handleCharacterExtract(task: Task) {
     screenplay: string;
     modelConfig?: ModelConfigPayload;
     episodeId?: string;
+    userId?: string;
   };
+
+  const systemPrompt = await resolvePrompt("character_extract", {
+    userId: payload.userId ?? "",
+    projectId: payload.projectId,
+  });
 
   const ai = resolveAIProvider(payload.modelConfig);
   const result = await ai.generateText(
     buildCharacterExtractPrompt(payload.screenplay),
-    { systemPrompt: CHARACTER_EXTRACT_SYSTEM, temperature: 0.5 }
+    { systemPrompt, temperature: 0.5 }
   );
 
   const extracted = JSON.parse(result) as Array<{

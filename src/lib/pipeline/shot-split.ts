@@ -2,10 +2,8 @@ import { db } from "@/lib/db";
 import { shots, dialogues, characters } from "@/lib/db/schema";
 import { resolveAIProvider } from "@/lib/ai/provider-factory";
 import type { ModelConfigPayload } from "@/lib/ai/provider-factory";
-import {
-  SHOT_SPLIT_SYSTEM,
-  buildShotSplitPrompt,
-} from "@/lib/ai/prompts/shot-split";
+import { buildShotSplitPrompt } from "@/lib/ai/prompts/shot-split";
+import { resolvePrompt } from "@/lib/ai/prompts/resolver";
 import { eq, and, or, isNull } from "drizzle-orm";
 import { ulid } from "ulid";
 import type { Task } from "@/lib/task-queue";
@@ -16,6 +14,7 @@ export async function handleShotSplit(task: Task) {
     screenplay: string;
     modelConfig?: ModelConfigPayload;
     episodeId?: string;
+    userId?: string;
   };
 
   // Get characters for this project (include main + episode-scoped)
@@ -32,10 +31,15 @@ export async function handleShotSplit(task: Task) {
     .map((c) => `${c.name}: ${c.description}`)
     .join("\n");
 
+  const systemPrompt = await resolvePrompt("shot_split", {
+    userId: payload.userId ?? "",
+    projectId: payload.projectId,
+  });
+
   const ai = resolveAIProvider(payload.modelConfig);
   const result = await ai.generateText(
     buildShotSplitPrompt(payload.screenplay, characterDescriptions),
-    { systemPrompt: SHOT_SPLIT_SYSTEM, temperature: 0.5 }
+    { systemPrompt, temperature: 0.5 }
   );
 
   const parsedShots = JSON.parse(result) as Array<{

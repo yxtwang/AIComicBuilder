@@ -4,6 +4,7 @@ import { shots, characters, storyboardVersions } from "@/lib/db/schema";
 import { resolveVideoProvider } from "@/lib/ai/provider-factory";
 import type { ModelConfigPayload } from "@/lib/ai/provider-factory";
 import { buildVideoPrompt } from "@/lib/ai/prompts/video-generate";
+import { resolveSlotContents } from "@/lib/ai/prompts/resolver";
 import { getModelMaxDuration } from "@/lib/ai/model-limits";
 import { eq } from "drizzle-orm";
 import type { Task } from "@/lib/task-queue";
@@ -19,7 +20,7 @@ async function getVersionedUploadDirFromPipeline(versionId: string | null | unde
 }
 
 export async function handleVideoGenerate(task: Task) {
-  const payload = task.payload as { shotId: string; ratio?: string; modelConfig?: ModelConfigPayload };
+  const payload = task.payload as { shotId: string; projectId?: string; userId?: string; ratio?: string; modelConfig?: ModelConfigPayload };
 
   const [shot] = await db
     .select()
@@ -43,6 +44,10 @@ export async function handleVideoGenerate(task: Task) {
   const modelMaxDuration = getModelMaxDuration(videoModelId);
   const effectiveDuration = Math.min(shot.duration ?? 10, modelMaxDuration);
 
+  const userId = payload.userId ?? "";
+  const projectId = payload.projectId ?? shot.projectId;
+  const videoSlots = await resolveSlotContents("video_generate", { userId, projectId });
+
   await db
     .update(shots)
     .set({ status: "generating" })
@@ -56,6 +61,7 @@ export async function handleVideoGenerate(task: Task) {
     endFrameDesc: shot.endFrameDesc ?? undefined,
     duration: effectiveDuration,
     characters: projectCharacters,
+    slotContents: videoSlots,
   });
 
   const result = await videoProvider.generateVideo({

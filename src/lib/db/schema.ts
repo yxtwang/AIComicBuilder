@@ -13,6 +13,7 @@ export const projects = sqliteTable("projects", {
     .default("draft"),
   finalVideoUrl: text("final_video_url"),
   generationMode: text('generation_mode', { enum: ['keyframe', 'reference'] }).notNull().default('keyframe'),
+  useProjectPrompts: integer("use_project_prompts").notNull().default(0),
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .$defaultFn(() => new Date()),
@@ -146,6 +147,44 @@ export const importLogs = sqliteTable("import_logs", {
     .default("running"),
   message: text("message").notNull().default(""),
   metadata: text("metadata", { mode: "json" }),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
+export const promptTemplates = sqliteTable("prompt_templates", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  promptKey: text("prompt_key").notNull(),
+  slotKey: text("slot_key"),
+  scope: text("scope", { enum: ["global", "project"] }).notNull().default("global"),
+  projectId: text("project_id"),
+  content: text("content").notNull(),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
+export const promptVersions = sqliteTable("prompt_versions", {
+  id: text("id").primaryKey(),
+  templateId: text("template_id")
+    .notNull()
+    .references(() => promptTemplates.id, { onDelete: "cascade" }),
+  content: text("content").notNull(),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
+export const promptPresets = sqliteTable("prompt_presets", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  userId: text("user_id"),
+  promptKey: text("prompt_key").notNull(),
+  slots: text("slots", { mode: "json" }).notNull(),
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .$defaultFn(() => new Date()),

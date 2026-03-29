@@ -1,6 +1,7 @@
 "use client";
 
 import { useProjectStore } from "@/stores/project-store";
+import { useEpisodeStore } from "@/stores/episode-store";
 import { useModelStore } from "@/stores/model-store";
 import { ShotCard } from "@/components/editor/shot-card";
 import { Button } from "@/components/ui/button";
@@ -30,6 +31,7 @@ import { GenerationModeTab } from "@/components/editor/generation-mode-tab";
 import { ShotDrawer } from "@/components/editor/shot-drawer";
 import { CharactersInlinePanel } from "@/components/editor/characters-inline-panel";
 import { ShotKanban } from "@/components/editor/shot-kanban";
+import { PromptEditButton } from "@/components/prompt-templates/prompt-edit-button";
 import Link from "next/link";
 
 export default function EpisodeStoryboardPage() {
@@ -52,6 +54,20 @@ export default function EpisodeStoryboardPage() {
   const [viewMode, setViewMode] = useState<"list" | "kanban">("list");
   const [versionDropdownOpen, setVersionDropdownOpen] = useState(false);
   const versionDropdownRef = useRef<HTMLDivElement>(null);
+  const [continueFromPrev, setContinueFromPrev] = useState(false);
+
+  const currentEpisodeId = useProjectStore((s) => s.currentEpisodeId);
+  const episodeStoreEpisodes = useEpisodeStore((s) => s.episodes);
+  const fetchEpisodes = useEpisodeStore((s) => s.fetchEpisodes);
+
+  useEffect(() => {
+    if (project?.id && episodeStoreEpisodes.length === 0) {
+      fetchEpisodes(project.id);
+    }
+  }, [project?.id, episodeStoreEpisodes.length, fetchEpisodes]);
+
+  const currentEpisodeSequence = episodeStoreEpisodes.find((e) => e.id === currentEpisodeId)?.sequence ?? 1;
+  const canContinueFromPrev = currentEpisodeSequence > 1;
 
   function switchView(mode: "list" | "kanban") {
     setViewMode(mode);
@@ -162,7 +178,7 @@ export default function EpisodeStoryboardPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "batch_frame_generate",
-          payload: { ratio: videoRatio, overwrite, versionId: selectedVersionId },
+          payload: { ratio: videoRatio, overwrite, versionId: selectedVersionId, continueFromPrev },
           modelConfig: getModelConfig(),
           episodeId: useProjectStore.getState().currentEpisodeId,
         }),
@@ -346,6 +362,14 @@ export default function EpisodeStoryboardPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <PromptEditButton
+            promptKeys={
+              generationMode === "reference"
+                ? ["shot_split", "scene_frame_generate"]
+                : "shot_split"
+            }
+            projectId={project.id}
+          />
           {totalShots > 0 && (
             <div className="inline-flex gap-1 rounded-xl border border-[--border-subtle] bg-[--surface] p-1">
               <button
@@ -541,6 +565,18 @@ export default function EpisodeStoryboardPage() {
                     <RefreshCw className="h-3.5 w-3.5" />
                   )}
                 </Button>
+                {canContinueFromPrev && (
+                  <label className="flex items-center gap-1.5 text-xs text-[--text-secondary] cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={continueFromPrev}
+                      onChange={(e) => setContinueFromPrev(e.target.checked)}
+                      className="accent-primary h-3.5 w-3.5"
+                      disabled={anyGenerating}
+                    />
+                    {t("project.continueFromPrev")}
+                  </label>
+                )}
               </>
             ) : (
               <>

@@ -1,9 +1,23 @@
+import { getPromptDefinition } from "./registry";
+
 export function buildFirstFramePrompt(params: {
   sceneDescription: string;
   startFrameDesc: string;
   characterDescriptions: string;
   previousLastFrame?: string;
+  slotContents?: Record<string, string>;
 }): string {
+  const def = getPromptDefinition("frame_generate_first");
+  if (def) {
+    return def.buildFullPrompt(params.slotContents ?? {}, {
+      sceneDescription: params.sceneDescription,
+      startFrameDesc: params.startFrameDesc,
+      characterDescriptions: params.characterDescriptions,
+      previousLastFrame: params.previousLastFrame,
+    });
+  }
+
+  // Fallback: hardcoded English prompt (should not be reached if registry is intact)
   const lines: string[] = [];
 
   lines.push(`Create the OPENING FRAME of this shot as a single high-quality image.`);
@@ -61,7 +75,18 @@ export function buildLastFramePrompt(params: {
   endFrameDesc: string;
   characterDescriptions: string;
   firstFramePath: string;
+  slotContents?: Record<string, string>;
 }): string {
+  const def = getPromptDefinition("frame_generate_last");
+  if (def) {
+    return def.buildFullPrompt(params.slotContents ?? {}, {
+      sceneDescription: params.sceneDescription,
+      endFrameDesc: params.endFrameDesc,
+      characterDescriptions: params.characterDescriptions,
+    });
+  }
+
+  // Fallback: hardcoded English prompt (should not be reached if registry is intact)
   const lines: string[] = [];
 
   lines.push(`Create the CLOSING FRAME of this shot as a single high-quality image.`);

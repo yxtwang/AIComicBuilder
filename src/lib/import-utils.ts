@@ -61,6 +61,9 @@ export async function extractTextFromFile(
       });
       return result.text;
     }
+    case "md":
+    case "markdown":
+      return buffer.toString("utf-8");
     default:
       throw new Error(`Unsupported file type: .${ext}`);
   }

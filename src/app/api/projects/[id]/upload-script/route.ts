@@ -7,10 +7,8 @@ import { projects, episodes } from "@/lib/db/schema";
 import { eq, and, max } from "drizzle-orm";
 import { getUserIdFromRequest } from "@/lib/get-user-id";
 import { ulid } from "ulid";
-import {
-  SCRIPT_SPLIT_SYSTEM,
-  buildScriptSplitPrompt,
-} from "@/lib/ai/prompts/script-split";
+import { buildScriptSplitPrompt } from "@/lib/ai/prompts/script-split";
+import { resolvePrompt } from "@/lib/ai/prompts/resolver";
 
 export const maxDuration = 300;
 
@@ -149,6 +147,7 @@ export async function POST(
   // Chunk the text
   const chunks = chunkText(fullText);
   const model = createLanguageModel(modelConfig.text);
+  const scriptSplitSystem = await resolvePrompt("script_split", { userId, projectId });
 
   // Process all chunks concurrently
   let episodeOffset = 0;
@@ -161,7 +160,7 @@ export async function POST(
 
     const result = await generateText({
       model,
-      system: SCRIPT_SPLIT_SYSTEM,
+      system: scriptSplitSystem,
       prompt,
       temperature: 0.5,
     });

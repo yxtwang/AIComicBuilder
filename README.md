@@ -4,6 +4,12 @@
 
 AI 驱动的漫剧生成器 — 从剧本到动画视频的全自动流水线。
 
+📺 **系统介绍视频**：
+
+[Bilibili](https://www.bilibili.com/video/BV1gMQSBQEoi/) 
+
+[v0.2.1 版本更新](https://www.bilibili.com/video/BV13CXQB8EwL/)
+
 添加飞书群：
 
 | 飞书群 | 飞书群2 |

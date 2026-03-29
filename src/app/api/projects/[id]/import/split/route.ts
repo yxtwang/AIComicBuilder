@@ -7,10 +7,8 @@ import { projects } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
 import { getUserIdFromRequest } from "@/lib/get-user-id";
 import { addImportLog, chunkText } from "@/lib/import-utils";
-import {
-  SCRIPT_SPLIT_SYSTEM,
-  buildScriptSplitPrompt,
-} from "@/lib/ai/prompts/script-split";
+import { buildScriptSplitPrompt } from "@/lib/ai/prompts/script-split";
+import { resolvePrompt } from "@/lib/ai/prompts/resolver";
 
 export const maxDuration = 300;
 
@@ -55,6 +53,7 @@ export async function POST(
 
   const chunks = chunkText(body.text);
   const model = createLanguageModel(body.modelConfig.text);
+  const scriptSplitSystem = await resolvePrompt("script_split", { userId, projectId });
 
   await addImportLog(
     projectId, 3, "running",
@@ -86,7 +85,7 @@ export async function POST(
         };
         const result = await generateText({
           model,
-          system: SCRIPT_SPLIT_SYSTEM,
+          system: scriptSplitSystem,
           prompt,
           providerOptions: jsonMode,
         });
@@ -101,7 +100,7 @@ export async function POST(
           );
           const retry = await generateText({
             model,
-            system: SCRIPT_SPLIT_SYSTEM,
+            system: scriptSplitSystem,
             prompt: prompt + "\n\nIMPORTANT: Return COMPLETE, VALID JSON. Fewer episodes is better than broken JSON.",
             providerOptions: jsonMode,
           });

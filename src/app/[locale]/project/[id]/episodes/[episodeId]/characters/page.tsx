@@ -10,6 +10,7 @@ import { Users, Sparkles, ImageIcon, Loader2 } from "lucide-react";
 import { InlineModelPicker } from "@/components/editor/model-selector";
 import { apiFetch } from "@/lib/api-fetch";
 import { useModelGuard } from "@/hooks/use-model-guard";
+import { PromptEditButton } from "@/components/prompt-templates/prompt-edit-button";
 import { toast } from "sonner";
 
 export default function EpisodeCharactersPage() {
@@ -43,13 +44,11 @@ export default function EpisodeCharactersPage() {
         }),
       });
 
-      if (response.body) {
-        const reader = response.body.getReader();
-        while (true) {
-          const { done } = await reader.read();
-          if (done) break;
-        }
+      if (!response.ok) {
+        throw new Error("Character extract failed");
       }
+
+      await response.json();
     } catch (err) {
       console.error("Character extract error:", err);
       toast.error(t("common.generationFailed"));
@@ -105,6 +104,7 @@ export default function EpisodeCharactersPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <PromptEditButton promptKeys="character_extract" projectId={project.id} />
           <InlineModelPicker capability="text" />
           <Button
             onClick={handleExtractCharacters}

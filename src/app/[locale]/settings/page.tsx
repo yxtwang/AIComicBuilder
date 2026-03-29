@@ -4,8 +4,9 @@ import { DefaultModelPicker } from "@/components/settings/default-model-picker";
 import { ProviderSection } from "@/components/settings/provider-section";
 import { useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Settings, Zap, Type, ImageIcon, VideoIcon } from "lucide-react";
+import { ArrowLeft, Settings, Zap, Type, ImageIcon, VideoIcon, Wand2 } from "lucide-react";
 import { LanguageSwitcher } from "@/components/language-switcher";
+import Link from "next/link";
 
 export default function SettingsPage() {
   const t = useTranslations("settings");
@@ -44,6 +45,20 @@ export default function SettingsPage() {
             </h3>
             <DefaultModelPicker />
           </div>
+
+          {/* Prompt Templates link */}
+          <Link
+            href="/settings/prompts"
+            className="flex items-center gap-3 rounded-2xl border border-[--border-subtle] bg-white p-5 transition-all duration-200 hover:border-[--border-hover] hover:shadow-[0_2px_12px_rgba(0,0,0,0.06)]"
+          >
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <Wand2 className="h-4 w-4" />
+            </div>
+            <div>
+              <div className="font-display text-sm font-semibold">{t("promptTemplates")}</div>
+              <div className="text-xs text-[--text-muted]">{t("promptTemplatesDesc")}</div>
+            </div>
+          </Link>
 
           {/* Language Models section */}
           <ProviderSection

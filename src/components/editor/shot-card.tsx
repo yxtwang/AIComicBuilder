@@ -27,6 +27,7 @@ import {
   Upload,
   Trash2,
 } from "lucide-react";
+import { AiOptimizeButton } from "./ai-optimize-button";
 
 interface Dialogue {
   id: string;
@@ -519,7 +520,15 @@ export function ShotCard({
         >
           <div className="space-y-2.5">
             <div>
-              <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[--text-muted]">{t("shot.sceneDescription")}</p>
+              <div className="mb-1 flex items-center gap-1">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[--text-muted]">{t("shot.sceneDescription")}</p>
+                <AiOptimizeButton
+                  value={editPrompt}
+                  onOptimized={(v) => { setEditPrompt(v); patchShot({ prompt: v }); }}
+                  fieldLabel="sceneDescription"
+                  projectId={projectId}
+                />
+              </div>
               <Textarea
                 value={editPrompt}
                 onChange={(e) => setEditPrompt(e.target.value)}
@@ -531,7 +540,15 @@ export function ShotCard({
             {generationMode !== "reference" && (
               <>
                 <div>
-                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-blue-500">{t("shot.startFrame")}</p>
+                  <div className="mb-1 flex items-center gap-1">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-blue-500">{t("shot.startFrame")}</p>
+                    <AiOptimizeButton
+                      value={editStartFrame}
+                      onOptimized={(v) => { setEditStartFrame(v); patchShot({ startFrameDesc: v }); }}
+                      fieldLabel="startFrame"
+                      projectId={projectId}
+                    />
+                  </div>
                   <Textarea
                     value={editStartFrame}
                     onChange={(e) => setEditStartFrame(e.target.value)}
@@ -542,7 +559,15 @@ export function ShotCard({
                   />
                 </div>
                 <div>
-                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-amber-500">{t("shot.endFrame")}</p>
+                  <div className="mb-1 flex items-center gap-1">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-amber-500">{t("shot.endFrame")}</p>
+                    <AiOptimizeButton
+                      value={editEndFrame}
+                      onOptimized={(v) => { setEditEndFrame(v); patchShot({ endFrameDesc: v }); }}
+                      fieldLabel="endFrame"
+                      projectId={projectId}
+                    />
+                  </div>
                   <Textarea
                     value={editEndFrame}
                     onChange={(e) => setEditEndFrame(e.target.value)}
@@ -555,7 +580,15 @@ export function ShotCard({
               </>
             )}
             <div>
-              <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-emerald-600">{t("shot.motionScript")}</p>
+              <div className="mb-1 flex items-center gap-1">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-emerald-600">{t("shot.motionScript")}</p>
+                <AiOptimizeButton
+                  value={editMotionScript}
+                  onOptimized={(v) => { setEditMotionScript(v); patchShot({ motionScript: v }); }}
+                  fieldLabel="motionScript"
+                  projectId={projectId}
+                />
+              </div>
               <Textarea
                 value={editMotionScript}
                 onChange={(e) => setEditMotionScript(e.target.value)}
@@ -660,12 +693,22 @@ export function ShotCard({
           isNext={nextStep === "prompt"}
         >
           {hasVideoPrompt && (
-            <Textarea
-              value={editVideoPrompt}
-              onChange={(e) => setEditVideoPrompt(e.target.value)}
-              onBlur={() => patchShot({ videoPrompt: editVideoPrompt })}
-              className="mb-2 min-h-[5rem] resize-none font-mono text-xs leading-relaxed"
-            />
+            <div className="mb-2">
+              <div className="mb-1 flex items-center gap-1">
+                <AiOptimizeButton
+                  value={editVideoPrompt}
+                  onOptimized={(v) => { setEditVideoPrompt(v); patchShot({ videoPrompt: v }); }}
+                  fieldLabel="videoPrompt"
+                  projectId={projectId}
+                />
+              </div>
+              <Textarea
+                value={editVideoPrompt}
+                onChange={(e) => setEditVideoPrompt(e.target.value)}
+                onBlur={() => patchShot({ videoPrompt: editVideoPrompt })}
+                className="min-h-[5rem] resize-none font-mono text-xs leading-relaxed"
+              />
+            </div>
           )}
           <Button
             size="xs"

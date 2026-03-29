@@ -2,13 +2,14 @@
 
 import { useEffect, useState, useCallback, use } from "react";
 import { useTranslations, useLocale } from "next-intl";
-import { Layers, Plus, Loader2, Users, X, Upload, FileUp } from "lucide-react";
+import { Layers, Plus, Loader2, Users, X, Upload, FileUp, Merge, Download } from "lucide-react";
 import { uploadUrl } from "@/lib/utils/upload-url";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { EpisodeCard } from "@/components/editor/episode-card";
 import { EpisodeDialog } from "@/components/editor/episode-dialog";
 import { useEpisodeStore, type Episode } from "@/stores/episode-store";
+import { apiFetch } from "@/lib/api-fetch";
 import Link from "next/link";
 
 export default function EpisodesPage({
@@ -32,6 +33,10 @@ export default function EpisodesPage({
   const [createOpen, setCreateOpen] = useState(false);
   const [editingEpisode, setEditingEpisode] = useState<Episode | null>(null);
   const [playingEpisode, setPlayingEpisode] = useState<Episode | null>(null);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [merging, setMerging] = useState(false);
+  const [mergedVideoUrl, setMergedVideoUrl] = useState<string | null>(null);
 
   useEffect(() => {
     fetchEpisodes(projectId);
@@ -70,6 +75,48 @@ export default function EpisodesPage({
   const handlePlayVideo = useCallback((episode: Episode) => {
     setPlayingEpisode(episode);
   }, []);
+
+  function toggleSelect(episode: Episode) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(episode.id)) next.delete(episode.id);
+      else next.add(episode.id);
+      return next;
+    });
+  }
+
+  function exitSelectionMode() {
+    setSelectionMode(false);
+    setSelectedIds(new Set());
+  }
+
+  async function handleMerge() {
+    if (selectedIds.size < 2) {
+      toast.error(t("mergeMinTwo"));
+      return;
+    }
+    setMerging(true);
+    try {
+      const res = await apiFetch(`/api/projects/${projectId}/merge-episodes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ episodeIds: Array.from(selectedIds) }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Merge failed");
+      }
+      const data = await res.json();
+      setMergedVideoUrl(data.videoUrl);
+      toast.success(t("mergeSuccess"));
+      exitSelectionMode();
+    } catch (err) {
+      console.error("Merge error:", err);
+      toast.error(err instanceof Error ? err.message : t("mergeError"));
+    } finally {
+      setMerging(false);
+    }
+  }
 
   if (loading) {
     return (
@@ -114,6 +161,21 @@ export default function EpisodesPage({
             <Users className="h-4 w-4" />
             {t("characters")}
           </Link>
+          <Button
+            variant="outline"
+            onClick={() => {
+              if (selectionMode) {
+                exitSelectionMode();
+              } else {
+                setSelectionMode(true);
+              }
+            }}
+            className="rounded-[10px]"
+            disabled={episodes.filter((e) => e.finalVideoUrl).length < 2}
+          >
+            <Merge className="mr-1.5 h-4 w-4" />
+            {selectionMode ? t("mergeCancel") : t("mergeVideos")}
+          </Button>
           <Button onClick={() => setCreateOpen(true)} className="rounded-[10px]">
             <Plus className="mr-1.5 h-4 w-4" />
             {t("create")}
@@ -156,18 +218,54 @@ export default function EpisodesPage({
               onEdit={(ep) => setEditingEpisode(ep)}
               onDelete={handleDelete}
               onPlayVideo={handlePlayVideo}
+              selectionMode={selectionMode}
+              selected={selectedIds.has(episode.id)}
+              selectable={!!episode.finalVideoUrl}
+              onToggleSelect={toggleSelect}
             />
           ))}
           {/* Add new card */}
-          <button
-            onClick={() => setCreateOpen(true)}
-            className="flex min-h-[200px] flex-col items-center justify-center rounded-[14px] border-[1.5px] border-dashed border-[--border-subtle] bg-white transition-all hover:border-primary hover:bg-primary/[0.02]"
+          {!selectionMode && (
+            <button
+              onClick={() => setCreateOpen(true)}
+              className="flex min-h-[200px] flex-col items-center justify-center rounded-[14px] border-[1.5px] border-dashed border-[--border-subtle] bg-white transition-all hover:border-primary hover:bg-primary/[0.02]"
+            >
+              <div className="mb-2 flex h-9 w-9 items-center justify-center rounded-[10px] bg-[--surface] text-[--text-muted] transition-all group-hover:bg-primary/8 group-hover:text-primary">
+                <Plus className="h-[18px] w-[18px]" />
+              </div>
+              <span className="text-xs font-medium text-[--text-muted]">{t("create")}</span>
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Floating selection action bar */}
+      {selectionMode && (
+        <div className="fixed bottom-6 left-1/2 z-40 flex -translate-x-1/2 items-center gap-3 rounded-2xl border border-[--border-subtle] bg-white px-5 py-3 shadow-xl">
+          <span className="text-sm font-medium text-[--text-secondary]">
+            {t("mergeSelected", { count: selectedIds.size })}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={exitSelectionMode}
           >
-            <div className="mb-2 flex h-9 w-9 items-center justify-center rounded-[10px] bg-[--surface] text-[--text-muted] transition-all group-hover:bg-primary/8 group-hover:text-primary">
-              <Plus className="h-[18px] w-[18px]" />
-            </div>
-            <span className="text-xs font-medium text-[--text-muted]">{t("create")}</span>
-          </button>
+            {t("mergeCancel")}
+          </Button>
+          <Button
+            size="sm"
+            disabled={selectedIds.size < 2 || merging}
+            onClick={handleMerge}
+          >
+            {merging ? (
+              <>
+                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                {t("merging")}
+              </>
+            ) : (
+              t("mergeConfirm")
+            )}
+          </Button>
         </div>
       )}
 
@@ -219,6 +317,43 @@ export default function EpisodesPage({
               <span className="font-mono text-xs text-[#666]">
                 EP.{String(playingEpisode.sequence).padStart(2, "0")}
               </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Merged video preview + download modal */}
+      {mergedVideoUrl && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          onClick={() => setMergedVideoUrl(null)}
+        >
+          <div
+            className="relative w-[90%] max-w-3xl overflow-hidden rounded-2xl bg-black shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setMergedVideoUrl(null)}
+              className="absolute right-3 top-3 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-white/15 text-white backdrop-blur-sm transition-colors hover:bg-white/30"
+            >
+              <X className="h-4 w-4" />
+            </button>
+            <video
+              src={uploadUrl(mergedVideoUrl)}
+              controls
+              autoPlay
+              className="w-full"
+            />
+            <div className="flex items-center justify-between bg-[#111] px-5 py-3">
+              <span className="text-sm font-semibold text-white">{t("mergeVideos")}</span>
+              <a
+                href={uploadUrl(mergedVideoUrl)}
+                download
+                className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-white/20"
+              >
+                <Download className="h-3.5 w-3.5" />
+                {t("downloadVideo")}
+              </a>
             </div>
           </div>
         </div>

@@ -7,10 +7,8 @@ import { projects } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
 import { getUserIdFromRequest } from "@/lib/get-user-id";
 import { addImportLog, chunkText } from "@/lib/import-utils";
-import {
-  IMPORT_CHARACTER_EXTRACT_SYSTEM,
-  buildImportCharacterExtractPrompt,
-} from "@/lib/ai/prompts/import-character-extract";
+import { buildImportCharacterExtractPrompt } from "@/lib/ai/prompts/import-character-extract";
+import { resolvePrompt } from "@/lib/ai/prompts/resolver";
 
 export const maxDuration = 300;
 
@@ -48,6 +46,7 @@ export async function POST(
 
   const chunks = chunkText(body.text);
   const model = createLanguageModel(body.modelConfig.text);
+  const importCharSystem = await resolvePrompt("import_character_extract", { userId, projectId });
 
   await addImportLog(
     projectId, 2, "running",
@@ -69,7 +68,7 @@ export async function POST(
         };
         const result = await generateText({
           model,
-          system: IMPORT_CHARACTER_EXTRACT_SYSTEM,
+          system: importCharSystem,
           prompt: buildImportCharacterExtractPrompt(chunk),
           providerOptions: jsonMode,
         });
@@ -84,7 +83,7 @@ export async function POST(
           );
           const retry = await generateText({
             model,
-            system: IMPORT_CHARACTER_EXTRACT_SYSTEM,
+            system: importCharSystem,
             prompt: buildImportCharacterExtractPrompt(chunk) + "\n\nIMPORTANT: Return COMPLETE, VALID JSON array.",
             providerOptions: jsonMode,
           });
