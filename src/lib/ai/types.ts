@@ -39,6 +39,8 @@ export type VideoGenerateParams = (KeyframeVideoParams | ReferenceVideoParams) &
   prompt: string;
   duration: number;
   ratio: string;
+  /** Character/style reference images for consistency (e.g. Veo 3.1 referenceImages) */
+  referenceImages?: string[];
 };
 
 export interface VideoGenerateResult {

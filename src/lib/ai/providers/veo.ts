@@ -46,30 +46,100 @@ export class VeoProvider implements VideoProvider {
     this.uploadDir = params?.uploadDir || process.env.UPLOAD_DIR || "./uploads";
   }
 
+  private isVeo31(): boolean {
+    return this.model.includes("3.1") || this.model.includes("3-1");
+  }
+
   async generateVideo(params: VideoGenerateParams): Promise<VideoGenerateResult> {
-    if (!("firstFrame" in params)) {
-      throw new Error("Veo provider only supports keyframe (image2video) mode");
-    }
     const durationSeconds = clampDuration(params.duration);
     const aspectRatio = toAspectRatio(params.ratio);
-    const firstFrameData = readImageData(params.firstFrame!);
-    const lastFrameData = readImageData(params.lastFrame!);
 
-    console.log(
-      `[Veo] Submitting task: model=${this.model}, duration=${durationSeconds}s, ratio=${aspectRatio}`
-    );
+    const isKeyframe = "firstFrame" in params && !!params.firstFrame;
+    const isReference = "initialImage" in params && !!params.initialImage;
+    const hasCharRefImages = params.referenceImages && params.referenceImages.length > 0;
+    const canUseReferenceImages = this.isVeo31() && hasCharRefImages;
+
+    // Reference mode + Veo 3.1: use referenceImages API (no image/firstFrame)
+    // Reference mode + non-3.1: fall back to image-to-video (initialImage as firstFrame)
+    // Keyframe mode: always use image + optional lastFrame
+    if (isReference && canUseReferenceImages) {
+      return this.generateWithReferenceImages(params, durationSeconds, aspectRatio);
+    }
+
+    // image-to-video mode
+    if (!isKeyframe && !isReference) {
+      throw new Error("Veo requires an image input (firstFrame or initialImage)");
+    }
+
+    const imageSource = isKeyframe ? params.firstFrame! : (params as { initialImage: string }).initialImage;
+    const imageData = readImageData(imageSource);
+
+    const config: Record<string, unknown> = {
+      durationSeconds,
+      aspectRatio,
+    };
+
+    // lastFrame only supported by Veo 2.x and 3.1+, NOT Veo 3.0
+    const isVeo30 = this.model.includes("3.0") || this.model.includes("3-0");
+    if (isKeyframe && params.lastFrame && !isVeo30) {
+      config.lastFrame = readImageData(params.lastFrame);
+    }
+
+    const modeLabel = isKeyframe ? "keyframe" : "image2video";
+    console.log(`[Veo] mode=${modeLabel}, model=${this.model}, duration=${durationSeconds}s, ratio=${aspectRatio}`);
 
     let operation = await this.client.models.generateVideos({
       model: this.model,
       prompt: params.prompt,
-      image: firstFrameData,
-      config: {
-        lastFrame: lastFrameData,
-        durationSeconds,
-        aspectRatio,
-      },
+      image: imageData,
+      config,
     });
 
+    return this.finishGeneration(operation);
+  }
+
+  /**
+   * Veo 3.1 referenceImages mode:
+   * - No `image` param (not image-to-video)
+   * - Character ref images go in config.referenceImages
+   * - Scene ref frame also goes as a referenceImage (to guide composition)
+   * - Duration locked to 8s
+   */
+  private async generateWithReferenceImages(
+    params: VideoGenerateParams,
+    durationSeconds: number,
+    aspectRatio: "16:9" | "9:16"
+  ): Promise<VideoGenerateResult> {
+    const initialImage = (params as { initialImage: string }).initialImage;
+
+    // Build reference images: scene frame + character refs (max 3 total)
+    const allRefPaths = [initialImage, ...(params.referenceImages ?? [])].slice(0, 3);
+    const referenceImages = allRefPaths.map((imgPath) => ({
+      image: readImageData(imgPath),
+      referenceType: "asset" as const,
+    }));
+
+    // referenceImages requires duration=8
+    const config: Record<string, unknown> = {
+      durationSeconds: 8,
+      aspectRatio,
+      referenceImages,
+    };
+
+    console.log(`[Veo] mode=referenceImages, model=${this.model}, refCount=${referenceImages.length}, ratio=${aspectRatio}`);
+
+    let operation = await this.client.models.generateVideos({
+      model: this.model,
+      prompt: params.prompt,
+      config,
+    });
+
+    return this.finishGeneration(operation);
+  }
+
+  private async finishGeneration(
+    operation: Awaited<ReturnType<GoogleGenAI["models"]["generateVideos"]>>
+  ): Promise<VideoGenerateResult> {
     operation = await this.pollForResult(operation);
 
     const response = operation.response;

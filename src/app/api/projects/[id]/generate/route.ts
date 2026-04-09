@@ -1804,6 +1804,7 @@ async function handleSingleReferenceVideo(
       prompt: videoPrompt,
       duration: effectiveDuration,
       ratio,
+      referenceImages: charRefs.map((c) => c.imagePath),
     });
 
     await db
@@ -1988,6 +1989,7 @@ async function handleBatchReferenceVideo(
           prompt: videoPrompt,
           duration: effectiveDuration,
           ratio,
+          referenceImages: charRefs.map((c) => c.imagePath),
         });
 
         await db

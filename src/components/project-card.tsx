@@ -100,7 +100,7 @@ export function ProjectCard({ id, title, status, createdAt }: ProjectCardProps) 
               </h3>
               <div className="mt-1 flex items-center gap-1 text-[11px] text-[--text-muted]">
                 <Clock className="h-3 w-3" />
-                <span>{new Date(createdAt).toLocaleDateString()}</span>
+                <span>{new Date(createdAt).toLocaleDateString(locale, { year: "numeric", month: "numeric", day: "numeric" })}</span>
               </div>
             </div>
           </div>

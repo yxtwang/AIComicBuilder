@@ -1,6 +1,10 @@
 # AI Comic Builder
 
-> v0.2.0
+
+社区交流：[https://linux.do/](https://linux.do/)
+
+
+> v0.2.2
 
 AI 驱动的漫剧生成器 — 从剧本到动画视频的全自动流水线。
 
@@ -12,11 +16,10 @@ AI 驱动的漫剧生成器 — 从剧本到动画视频的全自动流水线。
 
 添加飞书群：
 
-| 飞书群 | 飞书群2 |
-|:---:|:---:|
-| ![飞书群](images/lark-chat.jpg) | ![飞书群2](images/lark-chat2.png) |
+![飞书群](images/lark-chat.png)
 
 本网站全程由 AI 驱动开发， 开发指南：https://github.com/twwch/vibe-coding
+
 
 
 
@@ -211,6 +214,14 @@ src/
 | 预览 | 模型配置 |
 |:---:|:---:|
 | ![预览](images/demo/预览.png) | ![模型配置](images/demo/模型配置.png) |
+
+| 提示词管理 | 提示词修改 |
+|:---:|:---:|
+| ![提示词管理](images/demo/提示词管理.png) | ![提示词修改](images/demo/提示词修改.png) |
+
+| 提示词快捷入口 | 分镜 AI 优化 |
+|:---:|:---:|
+| ![提示词快捷入口](images/demo/提示词快捷入口.png) | ![分镜AI优化](images/demo/分镜AI优化.png) |
 
 ## Demo
 
